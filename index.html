@@ -58,6 +58,8 @@ main { flex: 1; padding: 16px 16px 40px; }
 .field select, .field input { width: 100%; font-size: 15px; padding: 9px 10px;
   border: 1px solid var(--gray-3); border-radius: var(--radius);
   background: var(--gray-0); color: var(--gray-9); }
+.person-name { padding: 9px 10px; border: 1px solid var(--gray-3); border-radius: var(--radius);
+  background: var(--gray-2); color: var(--gray-9); font-size: 15px; font-weight: 500; }
 .form-row { display: flex; gap: 10px; }
 .form-row .field { flex: 1; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -132,8 +134,8 @@ td.num, th.num { text-align: right; }
       <button class="logout-link" id="logoutBtn">Log out</button>
     </div>
     <div class="field">
-      <label for="nameSelect">Person</label>
-      <select id="nameSelect"></select>
+      <label>Person</label>
+      <div class="person-name" id="personName"></div>
     </div>
     <div class="form-row">
       <div class="field">
@@ -183,7 +185,7 @@ const loginMsg     = document.getElementById('loginMsg');
 const logoutBtn    = document.getElementById('logoutBtn');
 
 const appEl        = document.getElementById('app');
-const nameSelect   = document.getElementById('nameSelect');
+const personName   = document.getElementById('personName');
 const dateInput    = document.getElementById('dateInput');
 const weightInput  = document.getElementById('weightInput');
 const bpInput      = document.getElementById('bpInput');
@@ -283,13 +285,6 @@ function indicatorHTML(entry, size) {
 }
 
 // ── rendering ────────────────────────────────────────────────────────────────
-function populateNames(names) {
-  const options = names.map(n => `<option value="${n}">${n}</option>`).join('');
-  nameSelect.innerHTML = options;
-  if (!names.includes(selectedName)) selectedName = names[0] || '';
-  nameSelect.value = selectedName;
-}
-
 function render() {
   if (!selectedName) {
     main.innerHTML = '<div class="status-msg">No people found in the sheet yet.</div>';
@@ -391,9 +386,8 @@ async function loadData() {
   try {
     const data = await fetchJSON({ action: 'list', user: auth.user, pw: auth.pw });
     allItems = data.items;
-    const names = await fetchJSON({ action: 'users' });
-    if (!selectedName) selectedName = auth.user;
-    populateNames(names.names);
+    selectedName = auth.user;
+    personName.textContent = auth.user;
     render();
   } catch (err) {
     if (/incorrect|password/i.test(err.message)) {
@@ -405,7 +399,7 @@ async function loadData() {
 }
 
 async function saveEntry() {
-  const name = nameSelect.value;
+  const name = auth.user;
   const date = dateInput.value;
   const weight = weightInput.value;
   const bp = bpInput.value.trim();
@@ -435,11 +429,6 @@ async function saveEntry() {
   }
 }
 
-nameSelect.addEventListener('change', () => {
-  selectedName = nameSelect.value;
-  focusDate = null;
-  render();
-});
 saveBtn.addEventListener('click', saveEntry);
 logoutBtn.addEventListener('click', () => showLogin());
 
