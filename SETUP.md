@@ -2,16 +2,26 @@
 
 ## Step 1: Confirm your Google Sheet
 
-Your `OurWeightLossProgram` sheet already has the right layout — just confirm row 1 has these exact headers, columns A–D:
+Your `OurWeightLossProgram` sheet already has the right layout — just confirm row 1 has these exact headers, columns A–F:
 
-| A  | B    | C    | D      |
-|----|------|------|--------|
-| ID | Name | Date | Weight |
+| A  | B    | C    | D      | E              | F           |
+|----|------|------|--------|----------------|-------------|
+| ID | Name | Date | Weight | Blood Pressure | Blood Sugar |
 
 Copy the **Spreadsheet ID** from the URL:
 `https://docs.google.com/spreadsheets/d/`**`THIS_PART`**`/edit`
 
 Also note the **tab name** at the bottom of the sheet (e.g. `Sheet1`) — you'll need it below.
+
+### Add a "Users" tab
+
+Add a second tab named exactly **`Users`** with these headers, columns A–C:
+
+| A  | B    | C  |
+|----|------|----|
+| ID | Name | PW |
+
+Add one row per person, e.g. `1, Dennis, ****`, `2, Elaine, ****`. The `Name` here must exactly match (case-sensitive) the name used on the weigh-in tab. This is the **only** place logins/accounts are managed — the app itself no longer lets anyone create a user. Passwords are stored in plain text on this tab, so treat it like any other simple/shared-household password — it's not meant to protect sensitive data.
 
 ---
 
@@ -21,17 +31,20 @@ Also note the **tab name** at the bottom of the sheet (e.g. `Sheet1`) — you'll
 2. Delete the default `myFunction` code
 3. Paste in the contents of `Code.gs` from this folder
 4. Replace `YOUR_SPREADSHEET_ID` on line 2 with the ID you copied above
-5. Replace `Sheet1` on line 3 with your actual tab name, if different
-6. Click **Save** (floppy disk icon)
-7. Click **Deploy → New deployment**
-8. Click the gear icon next to "Type" and choose **Web app**
-9. Set:
-   - **Execute as:** Me
-   - **Who has access:** Anyone
-10. Click **Deploy**
-11. Click **Authorize access** and follow the Google prompts
-12. Copy the **Web app URL** — it looks like:
+5. Replace `Sheet1` on line 3 with your actual weigh-in tab name, if different
+6. Leave `Users` on line 4 as-is unless you named that tab something else
+7. Click **Save** (floppy disk icon)
+8. Click **Deploy → New deployment**
+9. Click the gear icon next to "Type" and choose **Web app**
+10. Set:
+    - **Execute as:** Me
+    - **Who has access:** Anyone
+11. Click **Deploy**
+12. Click **Authorize access** and follow the Google prompts
+13. Copy the **Web app URL** — it looks like:
     `https://script.google.com/macros/s/ABC123.../exec`
+
+If you already had this deployed before, use **Deploy → Manage deployments → edit (pencil) → New version → Deploy** instead, so the existing URL keeps working.
 
 ---
 
@@ -71,5 +84,7 @@ Replace `YOUR_APPS_SCRIPT_URL` with the URL you copied in Step 2. Save the file.
 - The Apps Script runs as your Google account, so the Sheet stays private even though the app URL is public.
 - If you redeploy the Apps Script after changes, the URL stays the same — no need to update `index.html`.
 - Submitting a weight for a person/date that already has an entry **overwrites** that row rather than creating a duplicate.
-- To add a new person, choose **+ Add new person** at the bottom of the Person dropdown, type their name, and save their first weigh-in as normal — no need to edit the sheet directly.
+- The app no longer lets anyone add a new person from the UI. To add someone, add a row for them on the **Users** tab (Name + PW) — they'll then appear in both the login screen and the Person dropdown.
+- Logging in requires picking your name and entering the matching password from the **Users** tab. A successful login is remembered on that device (via `localStorage`) so you won't have to log in every visit — use **Log out** to clear it.
+- Blood Pressure and Blood Sugar are optional on each weigh-in; leave them blank to skip.
 - A person's very first-ever weigh-in shows a neutral **Start** indicator (gray dot) since there's no prior minimum to compare against yet. Every entry after that uses the normal green/yellow/red/NewMin rules.

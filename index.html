@@ -37,8 +37,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   margin: 0 auto; background: var(--gray-0); }
 header { position: sticky; top: 0; z-index: 10; background: var(--gray-0);
   border-bottom: 1px solid var(--gray-3); padding: 14px 16px; }
-header h1 { font-size: 20px; font-weight: 600; margin-bottom: 12px; }
+header .header-top { display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px; }
+header h1 { font-size: 20px; font-weight: 600; }
+.logout-link { font-size: 13px; color: var(--gray-7); background: none; border: none;
+  cursor: pointer; text-decoration: underline; }
 main { flex: 1; padding: 16px 16px 40px; }
+
+/* ── login screen ── */
+.login-screen { min-height: 100%; display: flex; align-items: center; justify-content: center;
+  padding: 24px; }
+.login-card { width: 100%; max-width: 360px; background: var(--gray-0); border: 1px solid var(--gray-3);
+  border-radius: 12px; padding: 24px; box-shadow: var(--shadow); }
+.login-card h1 { font-size: 20px; font-weight: 600; margin-bottom: 18px; text-align: center; }
 
 /* ── form ── */
 .field { margin-bottom: 12px; }
@@ -71,6 +82,7 @@ main { flex: 1; padding: 16px 16px 40px; }
 .banner .info .name { font-size: 13px; color: var(--gray-7); }
 .banner .info .status { font-size: 20px; font-weight: 600; }
 .banner .info .weight { font-size: 13px; color: var(--gray-7); margin-top: 2px; }
+.banner .info .vitals { font-size: 12px; color: var(--gray-7); margin-top: 2px; }
 
 /* ── chart ── */
 .chart-card { background: var(--gray-0); border: 1px solid var(--gray-3); border-radius: 12px;
@@ -97,16 +109,31 @@ td.num, th.num { text-align: right; }
 </style>
 </head>
 <body>
-<div id="app">
-  <header>
+<div id="loginScreen" class="login-screen">
+  <div class="login-card">
     <h1>PWI — Weight Tracker</h1>
+    <div class="field">
+      <label for="loginName">Name</label>
+      <select id="loginName"></select>
+    </div>
+    <div class="field">
+      <label for="loginPw">Password</label>
+      <input type="password" id="loginPw">
+    </div>
+    <button class="btn" id="loginBtn">Log in</button>
+    <div id="loginMsg"></div>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+  <header>
+    <div class="header-top">
+      <h1>PWI — Weight Tracker</h1>
+      <button class="logout-link" id="logoutBtn">Log out</button>
+    </div>
     <div class="field">
       <label for="nameSelect">Person</label>
       <select id="nameSelect"></select>
-    </div>
-    <div class="field" id="newNameField" style="display:none">
-      <label for="newNameInput">New person's name</label>
-      <input type="text" id="newNameInput" placeholder="Name">
     </div>
     <div class="form-row">
       <div class="field">
@@ -116,6 +143,16 @@ td.num, th.num { text-align: right; }
       <div class="field">
         <label for="weightInput">Weight</label>
         <input type="number" id="weightInput" step="0.1" placeholder="lbs">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="field">
+        <label for="bpInput">Blood Pressure</label>
+        <input type="text" id="bpInput" placeholder="120/80">
+      </div>
+      <div class="field">
+        <label for="sugarInput">Blood Sugar</label>
+        <input type="number" id="sugarInput" step="1" placeholder="mg/dL">
       </div>
     </div>
     <button class="btn" id="saveBtn">Save weigh-in</button>
@@ -130,18 +167,27 @@ td.num, th.num { text-align: right; }
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzepqhhk61O2a6BwALRmIoA_lE5hZKpN_DoX3x0L2VdQpFPkL5dJii1TmpNyJPUPRCo/exec';
-const ADD_NEW_VALUE = '__add_new__';
+const AUTH_KEY = 'pwi_auth';
 
 let allItems = [];
 let selectedName = '';
 let focusDate = null; // when set, banner shows this date's entry instead of the latest
 let chartInstance = null;
+let auth = null; // { user, pw }
 
+const loginScreen  = document.getElementById('loginScreen');
+const loginName    = document.getElementById('loginName');
+const loginPw      = document.getElementById('loginPw');
+const loginBtn     = document.getElementById('loginBtn');
+const loginMsg     = document.getElementById('loginMsg');
+const logoutBtn    = document.getElementById('logoutBtn');
+
+const appEl        = document.getElementById('app');
 const nameSelect   = document.getElementById('nameSelect');
-const newNameField = document.getElementById('newNameField');
-const newNameInput = document.getElementById('newNameInput');
 const dateInput    = document.getElementById('dateInput');
 const weightInput  = document.getElementById('weightInput');
+const bpInput      = document.getElementById('bpInput');
+const sugarInput   = document.getElementById('sugarInput');
 const saveBtn      = document.getElementById('saveBtn');
 const saveMsg      = document.getElementById('saveMsg');
 const main         = document.getElementById('main');
@@ -166,6 +212,26 @@ async function fetchJSON(params) {
   const data = await res.json();
   if (data.error) throw new Error(data.error);
   return data;
+}
+
+// ── auth storage ────────────────────────────────────────────────────────────
+function loadAuth() {
+  try { return JSON.parse(localStorage.getItem(AUTH_KEY)); } catch { return null; }
+}
+function saveAuth(a) { localStorage.setItem(AUTH_KEY, JSON.stringify(a)); }
+function clearAuth() { localStorage.removeItem(AUTH_KEY); }
+
+function showLogin(message) {
+  clearAuth();
+  auth = null;
+  appEl.style.display = 'none';
+  loginScreen.style.display = 'flex';
+  loginMsg.innerHTML = message ? `<div class="error-msg">${message}</div>` : '';
+}
+
+function showApp() {
+  loginScreen.style.display = 'none';
+  appEl.style.display = '';
 }
 
 // ── derived calculations ────────────────────────────────────────────────────
@@ -205,7 +271,7 @@ function computeSeries(entries) {
     runningMin = Math.min(runningMin, w);
     prevWeight = w;
 
-    return { date: e.date, weight: w, status, indicator, color, sign, deltaAbs };
+    return { date: e.date, weight: w, bp: e.bp, sugar: e.sugar, status, indicator, color, sign, deltaAbs };
   });
 }
 
@@ -217,16 +283,11 @@ function indicatorHTML(entry, size) {
 }
 
 // ── rendering ────────────────────────────────────────────────────────────────
-function populateNames() {
-  const names = [...new Set(allItems.map(i => i.name))].sort();
+function populateNames(names) {
   const options = names.map(n => `<option value="${n}">${n}</option>`).join('');
-  nameSelect.innerHTML = options + `<option value="${ADD_NEW_VALUE}">+ Add new person</option>`;
+  nameSelect.innerHTML = options;
   if (!names.includes(selectedName)) selectedName = names[0] || '';
   nameSelect.value = selectedName;
-}
-
-function renderAddNewState() {
-  main.innerHTML = '<div class="status-msg">Enter a name above, then save their first weigh-in below.</div>';
 }
 
 function render() {
@@ -242,6 +303,8 @@ function render() {
   }
 
   const focus = (focusDate && series.find(e => e.date === focusDate)) || series[series.length - 1];
+  const vitals = [focus.bp ? `BP ${focus.bp}` : '', focus.sugar ? `Sugar ${focus.sugar}` : '']
+    .filter(Boolean).join(' · ');
 
   main.innerHTML = `
     <div class="banner">
@@ -250,6 +313,7 @@ function render() {
         <div class="name">${selectedName} — ${fmtDate(focus.date)}</div>
         <div class="status">${focus.status}</div>
         <div class="weight">${focus.weight.toFixed(1)} lbs</div>
+        ${vitals ? `<div class="vitals">${vitals}</div>` : ''}
       </div>
     </div>
     <div class="chart-card">
@@ -260,7 +324,7 @@ function render() {
       <h2>History</h2>
       <table>
         <thead>
-          <tr><th>Date</th><th class="num">Weight</th><th class="num">Trend</th><th class="num">Δ</th><th>Status</th><th></th></tr>
+          <tr><th>Date</th><th class="num">Weight</th><th class="num">Trend</th><th class="num">Δ</th><th>BP</th><th class="num">Sugar</th><th>Status</th><th></th></tr>
         </thead>
         <tbody>
           ${series.slice().reverse().map(rowHTML).join('')}
@@ -280,6 +344,8 @@ function rowHTML(e) {
       <td class="num">${e.weight.toFixed(1)}</td>
       <td class="num"><span class="sign ${signClass}">${e.sign || '—'}</span></td>
       <td class="num">${e.deltaAbs === null ? '—' : e.deltaAbs.toFixed(1)}</td>
+      <td>${e.bp || '—'}</td>
+      <td class="num">${e.sugar || '—'}</td>
       <td>${e.status}</td>
       <td>${indicatorHTML(e, 16)}</td>
     </tr>
@@ -323,41 +389,42 @@ function renderChart(series) {
 // ── data flow ────────────────────────────────────────────────────────────────
 async function loadData() {
   try {
-    const data = await fetchJSON({ action: 'list' });
+    const data = await fetchJSON({ action: 'list', user: auth.user, pw: auth.pw });
     allItems = data.items;
-    populateNames();
+    const names = await fetchJSON({ action: 'users' });
+    if (!selectedName) selectedName = auth.user;
+    populateNames(names.names);
     render();
   } catch (err) {
-    main.innerHTML = `<div class="error-msg">Couldn't load data: ${err.message}</div>`;
+    if (/incorrect|password/i.test(err.message)) {
+      showLogin('Your saved login stopped working. Please log in again.');
+    } else {
+      main.innerHTML = `<div class="error-msg">Couldn't load data: ${err.message}</div>`;
+    }
   }
 }
 
 async function saveEntry() {
-  const isAddingNew = nameSelect.value === ADD_NEW_VALUE;
-  let name = isAddingNew ? newNameInput.value.trim() : nameSelect.value;
+  const name = nameSelect.value;
   const date = dateInput.value;
   const weight = weightInput.value;
+  const bp = bpInput.value.trim();
+  const sugar = sugarInput.value;
 
   if (!name || !date || !weight) {
-    saveMsg.innerHTML = `<div class="error-msg">${isAddingNew ? 'Enter a name, date, and weight first.' : 'Pick a person, date, and weight first.'}</div>`;
+    saveMsg.innerHTML = '<div class="error-msg">Pick a person, date, and weight first.</div>';
     return;
-  }
-
-  if (isAddingNew) {
-    // Reuse an existing person's exact casing instead of creating a near-duplicate (e.g. "dennis" vs "Dennis").
-    const existing = [...new Set(allItems.map(i => i.name))].find(n => n.toLowerCase() === name.toLowerCase());
-    if (existing) name = existing;
   }
 
   saveBtn.disabled = true;
   saveMsg.innerHTML = '';
   try {
-    const data = await fetchJSON({ action: 'save', name, date, weight });
+    const data = await fetchJSON({ action: 'save', user: auth.user, pw: auth.pw, name, date, weight, bp, sugar });
     allItems = data.items;
     selectedName = name;
     focusDate = date;
-    newNameField.style.display = 'none';
-    populateNames();
+    bpInput.value = '';
+    sugarInput.value = '';
     render();
     saveMsg.innerHTML = '<div class="saved-msg">Saved.</div>';
     setTimeout(() => { saveMsg.innerHTML = ''; }, 2500);
@@ -369,27 +436,62 @@ async function saveEntry() {
 }
 
 nameSelect.addEventListener('change', () => {
-  if (nameSelect.value === ADD_NEW_VALUE) {
-    newNameField.style.display = '';
-    newNameInput.value = '';
-    newNameInput.focus();
-    focusDate = null;
-    renderAddNewState();
-  } else {
-    newNameField.style.display = 'none';
-    selectedName = nameSelect.value;
-    focusDate = null;
-    render();
-  }
+  selectedName = nameSelect.value;
+  focusDate = null;
+  render();
 });
 saveBtn.addEventListener('click', saveEntry);
+logoutBtn.addEventListener('click', () => showLogin());
+
+// ── login flow ──────────────────────────────────────────────────────────────
+async function populateLoginNames() {
+  try {
+    const data = await fetchJSON({ action: 'users' });
+    loginName.innerHTML = data.names.map(n => `<option value="${n}">${n}</option>`).join('');
+  } catch (err) {
+    loginMsg.innerHTML = `<div class="error-msg">Couldn't load users: ${err.message}</div>`;
+  }
+}
+
+async function attemptLogin() {
+  const user = loginName.value;
+  const pw = loginPw.value;
+  if (!user || !pw) {
+    loginMsg.innerHTML = '<div class="error-msg">Pick your name and enter your password.</div>';
+    return;
+  }
+  loginBtn.disabled = true;
+  loginMsg.innerHTML = '';
+  try {
+    const result = await fetchJSON({ action: 'login', user, pw });
+    if (!result.ok) throw new Error(result.error || 'Incorrect name or password');
+    auth = { user, pw };
+    saveAuth(auth);
+    loginPw.value = '';
+    showApp();
+    main.innerHTML = '<div class="status-msg">Loading…</div>';
+    loadData();
+  } catch (err) {
+    loginMsg.innerHTML = `<div class="error-msg">${err.message}</div>`;
+  } finally {
+    loginBtn.disabled = false;
+  }
+}
+
+loginBtn.addEventListener('click', attemptLogin);
+loginPw.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') attemptLogin(); });
 
 dateInput.value = todayISO();
 
 if (SCRIPT_URL.includes('YOUR_APPS_SCRIPT_URL')) {
-  main.innerHTML = '<div class="error-msg">Set SCRIPT_URL in index.html to your deployed Apps Script URL (see SETUP.md).</div>';
+  document.body.innerHTML = '<div class="error-msg" style="margin:24px">Set SCRIPT_URL in index.html to your deployed Apps Script URL (see SETUP.md).</div>';
 } else {
-  loadData();
+  populateLoginNames();
+  auth = loadAuth();
+  if (auth) {
+    showApp();
+    loadData();
+  }
 }
 </script>
 </body>

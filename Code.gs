@@ -1,18 +1,23 @@
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
-const SHEET_ID   = '1LKSZpQ0zwlYM5oMce5QDty3GsS41sEIEA_OIXFFcpOE';   // ← paste your Sheet ID here
-const SHEET_NAME = 'Sheet1';                 // ← tab name in your Sheet
+const SHEET_ID         = '1LKSZpQ0zwlYM5oMce5QDty3GsS41sEIEA_OIXFFcpOE';   // ← paste your Sheet ID here
+const SHEET_NAME       = 'Sheet1';                 // ← tab name with weigh-in entries
+const USERS_SHEET_NAME = 'Users';                  // ← tab name with the Name/PW login rows
 
 // ─── ROUTER ──────────────────────────────────────────────────────────────────
 function doGet(e) {
   const action = e.parameter.action;
-  const sheet  = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  const ss     = SpreadsheetApp.openById(SHEET_ID);
+  const sheet  = ss.getSheetByName(SHEET_NAME);
 
   let result;
   try {
     switch (action) {
-      case 'list': result = getAllRows(sheet);                                            break;
-      case 'save': result = saveEntry(sheet, e.parameter.name, e.parameter.date, e.parameter.weight); break;
-      default:     result = { error: 'Unknown action: ' + action };
+      case 'users': result = getUserNames(ss);                                                         break;
+      case 'login': result = login(ss, e.parameter.user, e.parameter.pw);                               break;
+      case 'list':  result = requireLogin(ss, e.parameter.user, e.parameter.pw, () => getAllRows(sheet)); break;
+      case 'save':  result = requireLogin(ss, e.parameter.user, e.parameter.pw, () =>
+                      saveEntry(sheet, e.parameter.name, e.parameter.date, e.parameter.weight, e.parameter.bp, e.parameter.sugar)); break;
+      default:      result = { error: 'Unknown action: ' + action };
     }
   } catch (err) {
     result = { error: err.message };
@@ -26,7 +31,7 @@ function doGet(e) {
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 function ensureHeaders(sheet) {
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(['ID', 'Name', 'Date', 'Weight']);
+    sheet.appendRow(['ID', 'Name', 'Date', 'Weight', 'Blood Pressure', 'Blood Sugar']);
   }
 }
 
@@ -49,20 +54,60 @@ function parseISODate(dateStr) {
   return new Date(parts[0], parts[1] - 1, parts[2]);
 }
 
+// ─── AUTH ────────────────────────────────────────────────────────────────────
+// Users are managed only on the "Users" tab (columns: ID, Name, PW) — the app
+// never creates or edits rows there.
+function getUsers(ss) {
+  const sheet = ss.getSheetByName(USERS_SHEET_NAME);
+  if (!sheet) return [];
+  const data = sheet.getDataRange().getValues();
+  const users = [];
+  for (let i = 1; i < data.length; i++) {
+    const [id, name, pw] = data[i];
+    if (!name) continue;
+    users.push({ name: String(name), pw: String(pw) });
+  }
+  return users;
+}
+
+function getUserNames(ss) {
+  return { names: getUsers(ss).map(u => u.name) };
+}
+
+function login(ss, user, pw) {
+  if (!user || !pw) return { ok: false, error: 'Enter a name and password' };
+  const match = getUsers(ss).find(u => u.name === user);
+  if (!match || match.pw !== pw) return { ok: false, error: 'Incorrect name or password' };
+  return { ok: true };
+}
+
+function requireLogin(ss, user, pw, fn) {
+  const auth = login(ss, user, pw);
+  if (!auth.ok) return auth;
+  return fn();
+}
+
 // ─── DATA ────────────────────────────────────────────────────────────────────
 function getAllRows(sheet) {
   ensureHeaders(sheet);
   const data = sheet.getDataRange().getValues();
   const items = [];
   for (let i = 1; i < data.length; i++) {
-    const [id, name, date, weight] = data[i];
+    const [id, name, date, weight, bp, sugar] = data[i];
     if (!name) continue;
-    items.push({ id: id, name: String(name), date: toISODate(date), weight: Number(weight) });
+    items.push({
+      id: id,
+      name: String(name),
+      date: toISODate(date),
+      weight: Number(weight),
+      bp: bp ? String(bp) : '',
+      sugar: sugar ? String(sugar) : ''
+    });
   }
   return { items };
 }
 
-function saveEntry(sheet, name, dateStr, weightStr) {
+function saveEntry(sheet, name, dateStr, weightStr, bp, sugar) {
   if (!name || !dateStr || !weightStr) return { error: 'Missing name, date, or weight' };
   ensureHeaders(sheet);
 
@@ -80,9 +125,9 @@ function saveEntry(sheet, name, dateStr, weightStr) {
   }
 
   if (targetRow !== -1) {
-    sheet.getRange(targetRow, 4).setValue(weight);
+    sheet.getRange(targetRow, 4, 1, 3).setValues([[weight, bp || '', sugar || '']]);
   } else {
-    sheet.appendRow([maxId + 1, name, parseISODate(dateStr), weight]);
+    sheet.appendRow([maxId + 1, name, parseISODate(dateStr), weight, bp || '', sugar || '']);
   }
 
   return getAllRows(sheet);
