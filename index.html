@@ -86,6 +86,12 @@ main { flex: 1; padding: 16px 16px 40px; }
 .banner .info .weight { font-size: 13px; color: var(--gray-7); margin-top: 2px; }
 .banner .info .vitals { font-size: 12px; color: var(--gray-7); margin-top: 2px; }
 
+/* ── range toggle ── */
+.range-toggle { display: flex; gap: 8px; margin: 16px 0; }
+.range-btn { flex: 1; padding: 8px 0; border: 1px solid var(--gray-3); border-radius: var(--radius);
+  background: var(--gray-0); color: var(--gray-7); font-size: 13px; font-weight: 500; cursor: pointer; }
+.range-btn.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+
 /* ── chart ── */
 .chart-card { background: var(--gray-0); border: 1px solid var(--gray-3); border-radius: 12px;
   padding: 16px; margin-bottom: 16px; }
@@ -181,6 +187,7 @@ let chartInstance = null;
 let sugarChartInstance = null;
 let bpChartInstance = null;
 let auth = null; // { user, pw }
+let chartRangeDays = 30;
 
 const loginScreen  = document.getElementById('loginScreen');
 const loginName    = document.getElementById('loginName');
@@ -237,11 +244,13 @@ function bpGrade(value, cutoffs) {
   return BP_GRADES[idx];
 }
 
-// Entries within the 30 days ending on the most recent entry's date.
-function windowLast30(series) {
+function rangeLabel(days) { return days === 365 ? 'last year' : `last ${days} days`; }
+
+// Entries within the `days` window ending on the most recent entry's date.
+function windowLastNDays(series, days) {
   const lastDate = series[series.length - 1].date;
   const cutoff = new Date(lastDate);
-  cutoff.setDate(cutoff.getDate() - 29);
+  cutoff.setDate(cutoff.getDate() - (days - 1));
   const cutoffISO = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-${String(cutoff.getDate()).padStart(2, '0')}`;
   return series.filter(e => e.date >= cutoffISO && e.date <= lastDate);
 }
@@ -339,9 +348,11 @@ function render() {
   const vitals = [focus.bp ? `BP ${focus.bp}` : '', focus.sugar ? `Sugar ${focus.sugar}` : '']
     .filter(Boolean).join(' · ');
 
-  const windowed = windowLast30(series);
+  const windowed = windowLastNDays(series, chartRangeDays);
   const sugarPoints = windowed.filter(e => e.sugar).map(e => ({ date: e.date, sugar: Number(e.sugar) }));
   const bpPoints = windowed.map(e => ({ date: e.date, ...parseBp(e.bp) })).filter(p => p.sys !== null && p.dia !== null);
+  const rangeBtn = (days, text) =>
+    `<button type="button" class="range-btn${chartRangeDays === days ? ' active' : ''}" data-range="${days}">${text}</button>`;
 
   main.innerHTML = `
     <div class="banner">
@@ -353,18 +364,23 @@ function render() {
         ${vitals ? `<div class="vitals">${vitals}</div>` : ''}
       </div>
     </div>
+    <div class="range-toggle">
+      ${rangeBtn(30, '30D')}
+      ${rangeBtn(90, '90D')}
+      ${rangeBtn(365, '1Y')}
+    </div>
     <div class="chart-card">
-      <h2>Weight — last 30 days</h2>
+      <h2>Weight — ${rangeLabel(chartRangeDays)}</h2>
       <div class="chart-wrap"><canvas id="chart"></canvas></div>
     </div>
     ${sugarPoints.length ? `
     <div class="chart-card">
-      <h2>Blood Sugar — last 30 days</h2>
+      <h2>Blood Sugar — ${rangeLabel(chartRangeDays)}</h2>
       <div class="chart-wrap"><canvas id="sugarChart"></canvas></div>
     </div>` : ''}
     ${bpPoints.length ? `
     <div class="chart-card">
-      <h2>Blood Pressure — last 30 days</h2>
+      <h2>Blood Pressure — ${rangeLabel(chartRangeDays)}</h2>
       <div class="chart-wrap"><canvas id="bpChart"></canvas></div>
       <div class="bp-legend">
         <span>&#9679; Optimal/Normal</span>
@@ -569,6 +585,12 @@ async function saveEntry() {
 
 saveBtn.addEventListener('click', saveEntry);
 logoutBtn.addEventListener('click', () => showLogin());
+main.addEventListener('click', (ev) => {
+  const btn = ev.target.closest('.range-btn');
+  if (!btn) return;
+  chartRangeDays = Number(btn.dataset.range);
+  render();
+});
 
 // ── login flow ──────────────────────────────────────────────────────────────
 async function populateLoginNames() {
