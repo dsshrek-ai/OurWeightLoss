@@ -91,6 +91,8 @@ main { flex: 1; padding: 16px 16px 40px; }
   padding: 16px; margin-bottom: 16px; }
 .chart-card h2 { font-size: 14px; font-weight: 600; color: var(--gray-7); margin-bottom: 10px; }
 canvas#chart { width: 100%; max-height: 220px; }
+.bp-legend { display: flex; flex-wrap: wrap; gap: 10px 14px; margin-top: 10px;
+  font-size: 11px; color: var(--gray-7); }
 
 /* ── table ── */
 .history h2 { font-size: 14px; font-weight: 600; color: var(--gray-7); margin: 0 0 10px; }
@@ -213,6 +215,25 @@ function fmtDate(iso) {
 function parseBp(bpStr) {
   const m = bpStr && String(bpStr).match(/(\d+)\s*\/\s*(\d+)/);
   return m ? { sys: Number(m[1]), dia: Number(m[2]) } : { sys: null, dia: null };
+}
+
+// WHO/ISH blood pressure categories. Systolic and diastolic each have their
+// own mmHg cutoffs, but share the same severity ladder, so a reading's shape
+// reflects how far *either* value has climbed regardless of which line it's on.
+const BP_GRADES = [
+  { label: 'Optimal/Normal', shape: 'circle',   radius: 3 },
+  { label: 'High-normal',    shape: 'rect',     radius: 4 },
+  { label: 'Grade 1',        shape: 'triangle', radius: 5 },
+  { label: 'Grade 2',        shape: 'rectRot',  radius: 6 },
+  { label: 'Grade 3',        shape: 'star',     radius: 7 },
+];
+const SYS_CUTOFFS = [130, 140, 160, 180];
+const DIA_CUTOFFS = [85, 90, 100, 110];
+
+function bpGrade(value, cutoffs) {
+  let idx = 0;
+  for (let i = 0; i < cutoffs.length; i++) if (value >= cutoffs[i]) idx = i + 1;
+  return BP_GRADES[idx];
 }
 
 // Entries within the 30 days ending on the most recent entry's date.
@@ -344,6 +365,13 @@ function render() {
     <div class="chart-card">
       <h2>Blood Pressure — last 30 days</h2>
       <canvas id="bpChart"></canvas>
+      <div class="bp-legend">
+        <span>&#9679; Optimal/Normal</span>
+        <span>&#9632; High-normal</span>
+        <span>&#9650; Grade 1</span>
+        <span>&#9670; Grade 2</span>
+        <span>&#9733; Grade 3</span>
+      </div>
     </div>` : ''}
     <div class="history">
       <h2>History</h2>
@@ -439,6 +467,10 @@ function renderSugarChart(points) {
 
 function renderBpChart(points) {
   if (bpChartInstance) bpChartInstance.destroy();
+
+  const sysGrades = points.map(p => bpGrade(p.sys, SYS_CUTOFFS));
+  const diaGrades = points.map(p => bpGrade(p.dia, DIA_CUTOFFS));
+
   const ctx = document.getElementById('bpChart').getContext('2d');
   bpChartInstance = new Chart(ctx, {
     type: 'line',
@@ -451,8 +483,10 @@ function renderBpChart(points) {
           borderColor: '#d93025',
           backgroundColor: 'rgba(217,48,37,.08)',
           tension: 0.4,
-          pointRadius: 3,
-          pointBackgroundColor: '#d93025'
+          pointStyle: sysGrades.map(g => g.shape),
+          pointRadius: sysGrades.map(g => g.radius),
+          pointBackgroundColor: '#d93025',
+          bpGrades: sysGrades
         },
         {
           label: 'Diastolic',
@@ -460,15 +494,27 @@ function renderBpChart(points) {
           borderColor: '#1a73e8',
           backgroundColor: 'rgba(26,115,232,.08)',
           tension: 0.4,
-          pointRadius: 3,
-          pointBackgroundColor: '#1a73e8'
+          pointStyle: diaGrades.map(g => g.shape),
+          pointRadius: diaGrades.map(g => g.radius),
+          pointBackgroundColor: '#1a73e8',
+          bpGrades: diaGrades
         }
       ]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+      plugins: {
+        legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label(ctx) {
+              const grade = ctx.dataset.bpGrades[ctx.dataIndex].label;
+              return `${ctx.dataset.label}: ${ctx.parsed.y} (${grade})`;
+            }
+          }
+        }
+      },
       scales: { y: { ticks: { precision: 0 } } }
     }
   });
