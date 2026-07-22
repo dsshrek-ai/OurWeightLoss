@@ -175,6 +175,8 @@ let allItems = [];
 let selectedName = '';
 let focusDate = null; // when set, banner shows this date's entry instead of the latest
 let chartInstance = null;
+let sugarChartInstance = null;
+let bpChartInstance = null;
 let auth = null; // { user, pw }
 
 const loginScreen  = document.getElementById('loginScreen');
@@ -206,6 +208,20 @@ function round1(n) { return Math.round(n * 10) / 10; }
 function fmtDate(iso) {
   const [y, m, d] = iso.split('-').map(Number);
   return `${m}/${d}/${String(y).slice(2)}`;
+}
+
+function parseBp(bpStr) {
+  const m = bpStr && String(bpStr).match(/(\d+)\s*\/\s*(\d+)/);
+  return m ? { sys: Number(m[1]), dia: Number(m[2]) } : { sys: null, dia: null };
+}
+
+// Entries within the 30 days ending on the most recent entry's date.
+function windowLast30(series) {
+  const lastDate = series[series.length - 1].date;
+  const cutoff = new Date(lastDate);
+  cutoff.setDate(cutoff.getDate() - 29);
+  const cutoffISO = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-${String(cutoff.getDate()).padStart(2, '0')}`;
+  return series.filter(e => e.date >= cutoffISO && e.date <= lastDate);
 }
 
 async function fetchJSON(params) {
@@ -301,6 +317,10 @@ function render() {
   const vitals = [focus.bp ? `BP ${focus.bp}` : '', focus.sugar ? `Sugar ${focus.sugar}` : '']
     .filter(Boolean).join(' · ');
 
+  const windowed = windowLast30(series);
+  const sugarPoints = windowed.filter(e => e.sugar).map(e => ({ date: e.date, sugar: Number(e.sugar) }));
+  const bpPoints = windowed.map(e => ({ date: e.date, ...parseBp(e.bp) })).filter(p => p.sys !== null && p.dia !== null);
+
   main.innerHTML = `
     <div class="banner">
       <div class="indicator">${indicatorHTML(focus, 36)}</div>
@@ -312,9 +332,19 @@ function render() {
       </div>
     </div>
     <div class="chart-card">
-      <h2>Last 30 days</h2>
+      <h2>Weight — last 30 days</h2>
       <canvas id="chart"></canvas>
     </div>
+    ${sugarPoints.length ? `
+    <div class="chart-card">
+      <h2>Blood Sugar — last 30 days</h2>
+      <canvas id="sugarChart"></canvas>
+    </div>` : ''}
+    ${bpPoints.length ? `
+    <div class="chart-card">
+      <h2>Blood Pressure — last 30 days</h2>
+      <canvas id="bpChart"></canvas>
+    </div>` : ''}
     <div class="history">
       <h2>History</h2>
       <table>
@@ -328,7 +358,13 @@ function render() {
     </div>
   `;
 
-  renderChart(series);
+  renderChart(windowed);
+
+  if (sugarPoints.length) renderSugarChart(sugarPoints);
+  else if (sugarChartInstance) { sugarChartInstance.destroy(); sugarChartInstance = null; }
+
+  if (bpPoints.length) renderBpChart(bpPoints);
+  else if (bpChartInstance) { bpChartInstance.destroy(); bpChartInstance = null; }
 }
 
 function rowHTML(e) {
@@ -347,14 +383,7 @@ function rowHTML(e) {
   `;
 }
 
-function renderChart(series) {
-  const lastDate = series[series.length - 1].date;
-  const cutoff = new Date(lastDate);
-  cutoff.setDate(cutoff.getDate() - 29);
-  const cutoffISO = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-${String(cutoff.getDate()).padStart(2, '0')}`;
-
-  const windowed = series.filter(e => e.date >= cutoffISO && e.date <= lastDate);
-
+function renderChart(windowed) {
   if (chartInstance) chartInstance.destroy();
   const ctx = document.getElementById('chart').getContext('2d');
   chartInstance = new Chart(ctx, {
@@ -379,6 +408,71 @@ function renderChart(series) {
     }
   });
   document.getElementById('chart').parentElement.style.height = '220px';
+}
+
+function renderSugarChart(points) {
+  if (sugarChartInstance) sugarChartInstance.destroy();
+  const ctx = document.getElementById('sugarChart').getContext('2d');
+  sugarChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: points.map(p => fmtDate(p.date)),
+      datasets: [{
+        data: points.map(p => p.sugar),
+        borderColor: '#f9ab00',
+        backgroundColor: 'rgba(249,171,0,.08)',
+        tension: 0.4,
+        fill: true,
+        pointRadius: 3,
+        pointBackgroundColor: '#f9ab00'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { ticks: { precision: 0 } } }
+    }
+  });
+  document.getElementById('sugarChart').parentElement.style.height = '220px';
+}
+
+function renderBpChart(points) {
+  if (bpChartInstance) bpChartInstance.destroy();
+  const ctx = document.getElementById('bpChart').getContext('2d');
+  bpChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: points.map(p => fmtDate(p.date)),
+      datasets: [
+        {
+          label: 'Systolic',
+          data: points.map(p => p.sys),
+          borderColor: '#d93025',
+          backgroundColor: 'rgba(217,48,37,.08)',
+          tension: 0.4,
+          pointRadius: 3,
+          pointBackgroundColor: '#d93025'
+        },
+        {
+          label: 'Diastolic',
+          data: points.map(p => p.dia),
+          borderColor: '#1a73e8',
+          backgroundColor: 'rgba(26,115,232,.08)',
+          tension: 0.4,
+          pointRadius: 3,
+          pointBackgroundColor: '#1a73e8'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+      scales: { y: { ticks: { precision: 0 } } }
+    }
+  });
+  document.getElementById('bpChart').parentElement.style.height = '220px';
 }
 
 // ── data flow ────────────────────────────────────────────────────────────────
