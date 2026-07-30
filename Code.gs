@@ -16,7 +16,8 @@ function doGet(e) {
       case 'login': result = login(ss, e.parameter.user, e.parameter.pw);                               break;
       case 'list':  result = requireLogin(ss, e.parameter.user, e.parameter.pw, () => getAllRows(sheet)); break;
       case 'save':  result = requireLogin(ss, e.parameter.user, e.parameter.pw, () =>
-                      saveEntry(sheet, e.parameter.name, e.parameter.date, e.parameter.weight, e.parameter.bp, e.parameter.sugar)); break;
+                      saveEntry(sheet, e.parameter.name, e.parameter.date, e.parameter.weight, e.parameter.bp, e.parameter.sugar,
+                                e.parameter.gym, e.parameter.walk, e.parameter.walkDistance)); break;
       default:      result = { error: 'Unknown action: ' + action };
     }
   } catch (err) {
@@ -31,8 +32,14 @@ function doGet(e) {
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 function ensureHeaders(sheet) {
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(['ID', 'Name', 'Date', 'Weight', 'Blood Pressure', 'Blood Sugar']);
+    sheet.appendRow(['ID', 'Name', 'Date', 'Weight', 'Blood Pressure', 'Blood Sugar', 'Gym', 'Walk', 'Walk Distance']);
   }
+}
+
+// A checkbox cell reads back as a real boolean; defensively also accept the
+// literal string 'TRUE' in case the column was typed in as text instead.
+function toBool(value) {
+  return value === true || String(value).toUpperCase() === 'TRUE';
 }
 
 // Normalize a Date cell (or, defensively, a string) to 'yyyy-MM-dd'.
@@ -93,7 +100,7 @@ function getAllRows(sheet) {
   const data = sheet.getDataRange().getValues();
   const items = [];
   for (let i = 1; i < data.length; i++) {
-    const [id, name, date, weight, bp, sugar] = data[i];
+    const [id, name, date, weight, bp, sugar, gym, walk, walkDistance] = data[i];
     if (!name) continue;
     items.push({
       id: id,
@@ -101,17 +108,23 @@ function getAllRows(sheet) {
       date: toISODate(date),
       weight: Number(weight),
       bp: bp ? String(bp) : '',
-      sugar: sugar ? String(sugar) : ''
+      sugar: sugar ? String(sugar) : '',
+      gym: toBool(gym),
+      walk: toBool(walk),
+      walkDistance: walkDistance ? Number(walkDistance) : null
     });
   }
   return { items };
 }
 
-function saveEntry(sheet, name, dateStr, weightStr, bp, sugar) {
+function saveEntry(sheet, name, dateStr, weightStr, bp, sugar, gym, walk, walkDistance) {
   if (!name || !dateStr || !weightStr) return { error: 'Missing name, date, or weight' };
   ensureHeaders(sheet);
 
   const weight = Number(weightStr);
+  const gymBool = toBool(gym);
+  const walkBool = toBool(walk);
+  const walkDist = walkDistance ? Number(walkDistance) : '';
   const data = sheet.getDataRange().getValues();
 
   let maxId = 0;
@@ -124,10 +137,11 @@ function saveEntry(sheet, name, dateStr, weightStr, bp, sugar) {
     }
   }
 
+  const row = [weight, bp || '', sugar || '', gymBool, walkBool, walkDist];
   if (targetRow !== -1) {
-    sheet.getRange(targetRow, 4, 1, 3).setValues([[weight, bp || '', sugar || '']]);
+    sheet.getRange(targetRow, 4, 1, row.length).setValues([row]);
   } else {
-    sheet.appendRow([maxId + 1, name, parseISODate(dateStr), weight, bp || '', sugar || '']);
+    sheet.appendRow([maxId + 1, name, parseISODate(dateStr), ...row]);
   }
 
   return getAllRows(sheet);

@@ -62,6 +62,10 @@ main { flex: 1; padding: 16px 16px 40px; }
   background: var(--gray-2); color: var(--gray-9); font-size: 15px; font-weight: 500; }
 .form-row { display: flex; gap: 10px; }
 .form-row .field { flex: 1; }
+.checkbox-field { display: flex; align-items: center; }
+.checkbox-field label { display: flex; align-items: center; gap: 6px; font-size: 15px;
+  font-weight: 400; color: var(--gray-9); margin-bottom: 0; cursor: pointer; }
+.checkbox-field input[type="checkbox"] { width: 18px; height: 18px; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   width: 100%; padding: 11px 16px; border-radius: var(--radius); border: none;
   background: var(--blue); color: #fff; font-size: 15px; font-weight: 500; cursor: pointer;
@@ -166,6 +170,18 @@ td.num, th.num { text-align: right; }
         <input type="number" id="sugarInput" step="1" placeholder="mg/dL">
       </div>
     </div>
+    <div class="form-row">
+      <div class="field checkbox-field">
+        <label><input type="checkbox" id="gymInput"> Gym</label>
+      </div>
+      <div class="field checkbox-field">
+        <label><input type="checkbox" id="walkInput"> Walk</label>
+      </div>
+      <div class="field">
+        <label for="walkDistanceInput">Walk Distance</label>
+        <input type="number" id="walkDistanceInput" step="0.1" placeholder="mi">
+      </div>
+    </div>
     <button class="btn" id="saveBtn">Check in</button>
     <div id="saveMsg"></div>
   </header>
@@ -186,6 +202,9 @@ let focusDate = null; // when set, banner shows this date's entry instead of the
 let chartInstance = null;
 let sugarChartInstance = null;
 let bpChartInstance = null;
+let gymChartInstance = null;
+let walkChartInstance = null;
+let walkDistanceChartInstance = null;
 let auth = null; // { user, pw }
 let chartRangeDays = 30;
 
@@ -202,6 +221,9 @@ const dateInput    = document.getElementById('dateInput');
 const weightInput  = document.getElementById('weightInput');
 const bpInput      = document.getElementById('bpInput');
 const sugarInput   = document.getElementById('sugarInput');
+const gymInput     = document.getElementById('gymInput');
+const walkInput    = document.getElementById('walkInput');
+const walkDistanceInput = document.getElementById('walkDistanceInput');
 const saveBtn      = document.getElementById('saveBtn');
 const saveMsg      = document.getElementById('saveMsg');
 const main         = document.getElementById('main');
@@ -245,6 +267,39 @@ function bpGrade(value, cutoffs) {
 }
 
 function rangeLabel(days) { return days === 365 ? 'last year' : `last ${days} days`; }
+
+// ISO-8601 week number + week-year (week-year differs from calendar year for
+// dates in early Jan / late Dec that belong to the adjacent year's week 1/52).
+function isoWeekInfo(dateISO) {
+  const [y, m, d] = dateISO.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  const dayNum = (date.getUTCDay() + 6) % 7; // Mon=0..Sun=6
+  date.setUTCDate(date.getUTCDate() - dayNum + 3); // nearest Thursday
+  const firstThursday = new Date(Date.UTC(date.getUTCFullYear(), 0, 4));
+  const firstDayNum = (firstThursday.getUTCDay() + 6) % 7;
+  firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDayNum + 3);
+  const week = 1 + Math.round((date - firstThursday) / (7 * 86400000));
+  return { week, year: date.getUTCFullYear() };
+}
+
+// Group entries into one bucket per ISO week, in chronological order, even
+// for weeks with zero gym/walk activity so trend gaps are visible.
+function weeklyAggregate(entries) {
+  const map = new Map();
+  entries.forEach(e => {
+    const { week, year } = isoWeekInfo(e.date);
+    const key = `${year}-W${String(week).padStart(2, '0')}`;
+    if (!map.has(key)) map.set(key, { week, year, gym: 0, walk: 0, miles: 0 });
+    const rec = map.get(key);
+    if (e.gym) rec.gym++;
+    if (e.walk) rec.walk++;
+    if (e.walkDistance) rec.miles = round1(rec.miles + e.walkDistance);
+  });
+  const weeks = [...map.values()].sort((a, b) => a.year - b.year || a.week - b.week);
+  const multiYear = new Set(weeks.map(w => w.year)).size > 1;
+  weeks.forEach(w => { w.label = multiYear ? `Wk${w.week} '${String(w.year).slice(2)}` : `Wk${w.week}`; });
+  return weeks;
+}
 
 // Entries within the `days` window ending on the most recent entry's date.
 function windowLastNDays(series, days) {
@@ -320,8 +375,16 @@ function computeSeries(entries) {
     runningMin = Math.min(runningMin, w);
     prevWeight = w;
 
-    return { date: e.date, weight: w, bp: e.bp, sugar: e.sugar, status, indicator, color, sign, deltaAbs };
+    return { date: e.date, weight: w, bp: e.bp, sugar: e.sugar, gym: e.gym, walk: e.walk,
+             walkDistance: e.walkDistance, status, indicator, color, sign, deltaAbs };
   });
+}
+
+function activityParts(e) {
+  const parts = [];
+  if (e.gym) parts.push('🏋️ Gym');
+  if (e.walk) parts.push(e.walkDistance ? `🚶 ${e.walkDistance} mi` : '🚶 Walk');
+  return parts;
 }
 
 function indicatorHTML(entry, size) {
@@ -345,12 +408,15 @@ function render() {
   }
 
   const focus = (focusDate && series.find(e => e.date === focusDate)) || series[series.length - 1];
-  const vitals = [focus.bp ? `BP ${focus.bp}` : '', focus.sugar ? `Sugar ${focus.sugar}` : '']
+  const vitals = [focus.bp ? `BP ${focus.bp}` : '', focus.sugar ? `Sugar ${focus.sugar}` : '', ...activityParts(focus)]
     .filter(Boolean).join(' · ');
 
   const windowed = windowLastNDays(series, chartRangeDays);
   const sugarPoints = windowed.filter(e => e.sugar).map(e => ({ date: e.date, sugar: Number(e.sugar) }));
   const bpPoints = windowed.map(e => ({ date: e.date, ...parseBp(e.bp) })).filter(p => p.sys !== null && p.dia !== null);
+  const weekly = weeklyAggregate(windowed);
+  const anyGym = windowed.some(e => e.gym);
+  const anyWalk = windowed.some(e => e.walk || e.walkDistance);
   const rangeBtn = (days, text) =>
     `<button type="button" class="range-btn${chartRangeDays === days ? ' active' : ''}" data-range="${days}">${text}</button>`;
 
@@ -390,11 +456,25 @@ function render() {
         <span>&#9733; Grade 3</span>
       </div>
     </div>` : ''}
+    ${anyGym ? `
+    <div class="chart-card">
+      <h2>Gym Visits per Week — ${rangeLabel(chartRangeDays)}</h2>
+      <div class="chart-wrap"><canvas id="gymChart"></canvas></div>
+    </div>` : ''}
+    ${anyWalk ? `
+    <div class="chart-card">
+      <h2>Walks per Week — ${rangeLabel(chartRangeDays)}</h2>
+      <div class="chart-wrap"><canvas id="walkChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h2>Miles Walked per Week — ${rangeLabel(chartRangeDays)}</h2>
+      <div class="chart-wrap"><canvas id="walkDistanceChart"></canvas></div>
+    </div>` : ''}
     <div class="history">
       <h2>History</h2>
       <table>
         <thead>
-          <tr><th>Date</th><th class="num">Weight</th><th class="num">Trend</th><th class="num">Δ</th><th>BP</th><th class="num">Sugar</th><th>Status</th><th></th></tr>
+          <tr><th>Date</th><th class="num">Weight</th><th class="num">Trend</th><th class="num">Δ</th><th>BP</th><th class="num">Sugar</th><th>Activity</th><th>Status</th><th></th></tr>
         </thead>
         <tbody>
           ${series.slice().reverse().map(rowHTML).join('')}
@@ -410,6 +490,15 @@ function render() {
 
   if (bpPoints.length) renderBpChart(bpPoints);
   else if (bpChartInstance) { bpChartInstance.destroy(); bpChartInstance = null; }
+
+  if (anyGym) renderGymChart(weekly);
+  else if (gymChartInstance) { gymChartInstance.destroy(); gymChartInstance = null; }
+
+  if (anyWalk) { renderWalkChart(weekly); renderWalkDistanceChart(weekly); }
+  else {
+    if (walkChartInstance) { walkChartInstance.destroy(); walkChartInstance = null; }
+    if (walkDistanceChartInstance) { walkDistanceChartInstance.destroy(); walkDistanceChartInstance = null; }
+  }
 }
 
 function rowHTML(e) {
@@ -422,6 +511,7 @@ function rowHTML(e) {
       <td class="num">${e.deltaAbs === null ? '—' : e.deltaAbs.toFixed(1)}</td>
       <td>${e.bp || '—'}</td>
       <td class="num">${e.sugar || '—'}</td>
+      <td>${activityParts(e).join(' ') || '—'}</td>
       <td>${e.status}</td>
       <td>${indicatorHTML(e, 16)}</td>
     </tr>
@@ -535,6 +625,60 @@ function renderBpChart(points) {
   });
 }
 
+function renderGymChart(weekly) {
+  if (gymChartInstance) gymChartInstance.destroy();
+  const ctx = document.getElementById('gymChart').getContext('2d');
+  gymChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: weekly.map(w => w.label),
+      datasets: [{ data: weekly.map(w => w.gym), backgroundColor: '#188038' }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+    }
+  });
+}
+
+function renderWalkChart(weekly) {
+  if (walkChartInstance) walkChartInstance.destroy();
+  const ctx = document.getElementById('walkChart').getContext('2d');
+  walkChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: weekly.map(w => w.label),
+      datasets: [{ data: weekly.map(w => w.walk), backgroundColor: '#1a73e8' }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+    }
+  });
+}
+
+function renderWalkDistanceChart(weekly) {
+  if (walkDistanceChartInstance) walkDistanceChartInstance.destroy();
+  const ctx = document.getElementById('walkDistanceChart').getContext('2d');
+  walkDistanceChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: weekly.map(w => w.label),
+      datasets: [{ data: weekly.map(w => w.miles), backgroundColor: '#f9ab00' }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { precision: 1 } } }
+    }
+  });
+}
+
 // Show the existing entry for this date (if any) so a check-in overwrites on
 // purpose rather than by surprise, and so entering just one new field (e.g.
 // blood sugar) doesn't blank out that day's weight/BP.
@@ -544,6 +688,9 @@ function prefillForDate(date) {
   weightInput.value = existing ? existing.weight : '';
   bpInput.value = existing ? (existing.bp || '') : '';
   sugarInput.value = existing ? (existing.sugar || '') : '';
+  gymInput.checked = existing ? !!existing.gym : false;
+  walkInput.checked = existing ? !!existing.walk : false;
+  walkDistanceInput.value = existing && existing.walkDistance !== null ? existing.walkDistance : '';
 }
 
 // ── data flow ────────────────────────────────────────────────────────────────
@@ -570,6 +717,9 @@ async function saveEntry() {
   const weight = weightInput.value;
   const bp = bpInput.value.trim();
   const sugar = sugarInput.value;
+  const gym = gymInput.checked;
+  const walk = walkInput.checked;
+  const walkDistance = walkInput.checked ? walkDistanceInput.value : '';
 
   if (!name || !date || !weight) {
     saveMsg.innerHTML = '<div class="error-msg">Pick a date and weight first.</div>';
@@ -579,7 +729,7 @@ async function saveEntry() {
   saveBtn.disabled = true;
   saveMsg.innerHTML = '';
   try {
-    const data = await fetchJSON({ action: 'save', user: auth.user, pw: auth.pw, name, date, weight, bp, sugar });
+    const data = await fetchJSON({ action: 'save', user: auth.user, pw: auth.pw, name, date, weight, bp, sugar, gym, walk, walkDistance });
     allItems = data.items;
     selectedName = name;
     focusDate = date;

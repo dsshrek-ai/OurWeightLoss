@@ -2,11 +2,13 @@
 
 ## Step 1: Confirm your Google Sheet
 
-Your `OurWeightLossProgram` sheet already has the right layout — just confirm row 1 has these exact headers, columns A–F:
+Your `OurWeightLossProgram` sheet already has the right layout — just confirm row 1 has these exact headers, columns A–I:
 
-| A  | B    | C    | D      | E              | F           |
-|----|------|------|--------|----------------|-------------|
-| ID | Name | Date | Weight | Blood Pressure | Blood Sugar |
+| A  | B    | C    | D      | E              | F           | G   | H    | I             |
+|----|------|------|--------|----------------|-------------|-----|------|---------------|
+| ID | Name | Date | Weight | Blood Pressure | Blood Sugar | Gym | Walk | Walk Distance |
+
+Gym and Walk are recorded as checkboxes in the app (TRUE/FALSE). To make columns G and H show as checkboxes in the sheet itself, select the column and use **Insert → Checkbox** — not required, but it keeps manual edits consistent with what the app writes. Walk Distance is a plain number in miles.
 
 Copy the **Spreadsheet ID** from the URL:
 `https://docs.google.com/spreadsheets/d/`**`THIS_PART`**`/edit`
@@ -86,5 +88,5 @@ Replace `YOUR_APPS_SCRIPT_URL` with the URL you copied in Step 2. Save the file.
 - Submitting a weight for a person/date that already has an entry **overwrites** that row rather than creating a duplicate.
 - The app no longer lets anyone add a new person from the UI. To add someone, add a row for them on the **Users** tab (Name + PW) — they'll then appear in both the login screen and the Person dropdown.
 - Logging in requires picking your name and entering the matching password from the **Users** tab. A successful login is remembered on that device (via `localStorage`) so you won't have to log in every visit — use **Log out** to clear it.
-- Blood Pressure and Blood Sugar are optional on each weigh-in; leave them blank to skip.
+- Blood Pressure, Blood Sugar, Gym, Walk, and Walk Distance are all optional on each weigh-in; leave them blank/unchecked to skip.
 - A person's very first-ever weigh-in shows a neutral **Start** indicator (gray dot) since there's no prior minimum to compare against yet. Every entry after that uses the normal green/yellow/red/NewMin rules.
