@@ -182,6 +182,11 @@ td.num, th.num { text-align: right; }
         <input type="number" id="walkDistanceInput" step="0.1" placeholder="mi">
       </div>
     </div>
+    <div class="form-row">
+      <div class="field checkbox-field">
+        <label><input type="checkbox" id="zumbaInput"> Zumba</label>
+      </div>
+    </div>
     <button class="btn" id="saveBtn">Check in</button>
     <div id="saveMsg"></div>
   </header>
@@ -205,6 +210,7 @@ let bpChartInstance = null;
 let gymChartInstance = null;
 let walkChartInstance = null;
 let walkDistanceChartInstance = null;
+let zumbaChartInstance = null;
 let auth = null; // { user, pw }
 let chartRangeDays = 30;
 
@@ -224,6 +230,7 @@ const sugarInput   = document.getElementById('sugarInput');
 const gymInput     = document.getElementById('gymInput');
 const walkInput    = document.getElementById('walkInput');
 const walkDistanceInput = document.getElementById('walkDistanceInput');
+const zumbaInput   = document.getElementById('zumbaInput');
 const saveBtn      = document.getElementById('saveBtn');
 const saveMsg      = document.getElementById('saveMsg');
 const main         = document.getElementById('main');
@@ -289,11 +296,12 @@ function weeklyAggregate(entries) {
   entries.forEach(e => {
     const { week, year } = isoWeekInfo(e.date);
     const key = `${year}-W${String(week).padStart(2, '0')}`;
-    if (!map.has(key)) map.set(key, { week, year, gym: 0, walk: 0, miles: 0 });
+    if (!map.has(key)) map.set(key, { week, year, gym: 0, walk: 0, miles: 0, zumba: 0 });
     const rec = map.get(key);
     if (e.gym) rec.gym++;
     if (e.walk) rec.walk++;
     if (e.walkDistance) rec.miles = round1(rec.miles + e.walkDistance);
+    if (e.zumba) rec.zumba++;
   });
   const weeks = [...map.values()].sort((a, b) => a.year - b.year || a.week - b.week);
   const multiYear = new Set(weeks.map(w => w.year)).size > 1;
@@ -376,7 +384,7 @@ function computeSeries(entries) {
     prevWeight = w;
 
     return { date: e.date, weight: w, bp: e.bp, sugar: e.sugar, gym: e.gym, walk: e.walk,
-             walkDistance: e.walkDistance, status, indicator, color, sign, deltaAbs };
+             walkDistance: e.walkDistance, zumba: e.zumba, status, indicator, color, sign, deltaAbs };
   });
 }
 
@@ -384,6 +392,7 @@ function activityParts(e) {
   const parts = [];
   if (e.gym) parts.push('🏋️ Gym');
   if (e.walk) parts.push(e.walkDistance ? `🚶 ${e.walkDistance} mi` : '🚶 Walk');
+  if (e.zumba) parts.push('💃 Zumba');
   return parts;
 }
 
@@ -417,6 +426,7 @@ function render() {
   const weekly = weeklyAggregate(windowed);
   const anyGym = windowed.some(e => e.gym);
   const anyWalk = windowed.some(e => e.walk || e.walkDistance);
+  const anyZumba = windowed.some(e => e.zumba);
   const rangeBtn = (days, text) =>
     `<button type="button" class="range-btn${chartRangeDays === days ? ' active' : ''}" data-range="${days}">${text}</button>`;
 
@@ -470,6 +480,11 @@ function render() {
       <h2>Miles Walked per Week — ${rangeLabel(chartRangeDays)}</h2>
       <div class="chart-wrap"><canvas id="walkDistanceChart"></canvas></div>
     </div>` : ''}
+    ${anyZumba ? `
+    <div class="chart-card">
+      <h2>Zumba Sessions per Week — ${rangeLabel(chartRangeDays)}</h2>
+      <div class="chart-wrap"><canvas id="zumbaChart"></canvas></div>
+    </div>` : ''}
     <div class="history">
       <h2>History</h2>
       <table>
@@ -499,6 +514,9 @@ function render() {
     if (walkChartInstance) { walkChartInstance.destroy(); walkChartInstance = null; }
     if (walkDistanceChartInstance) { walkDistanceChartInstance.destroy(); walkDistanceChartInstance = null; }
   }
+
+  if (anyZumba) renderZumbaChart(weekly);
+  else if (zumbaChartInstance) { zumbaChartInstance.destroy(); zumbaChartInstance = null; }
 }
 
 function rowHTML(e) {
@@ -679,6 +697,24 @@ function renderWalkDistanceChart(weekly) {
   });
 }
 
+function renderZumbaChart(weekly) {
+  if (zumbaChartInstance) zumbaChartInstance.destroy();
+  const ctx = document.getElementById('zumbaChart').getContext('2d');
+  zumbaChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: weekly.map(w => w.label),
+      datasets: [{ data: weekly.map(w => w.zumba), backgroundColor: '#d93025' }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+    }
+  });
+}
+
 // Show the existing entry for this date (if any) so a check-in overwrites on
 // purpose rather than by surprise, and so entering just one new field (e.g.
 // blood sugar) doesn't blank out that day's weight/BP.
@@ -691,6 +727,7 @@ function prefillForDate(date) {
   gymInput.checked = existing ? !!existing.gym : false;
   walkInput.checked = existing ? !!existing.walk : false;
   walkDistanceInput.value = existing && existing.walkDistance !== null ? existing.walkDistance : '';
+  zumbaInput.checked = existing ? !!existing.zumba : false;
 }
 
 // ── data flow ────────────────────────────────────────────────────────────────
@@ -720,6 +757,7 @@ async function saveEntry() {
   const gym = gymInput.checked;
   const walk = walkInput.checked;
   const walkDistance = walkInput.checked ? walkDistanceInput.value : '';
+  const zumba = zumbaInput.checked;
 
   if (!name || !date || !weight) {
     saveMsg.innerHTML = '<div class="error-msg">Pick a date and weight first.</div>';
@@ -729,7 +767,7 @@ async function saveEntry() {
   saveBtn.disabled = true;
   saveMsg.innerHTML = '';
   try {
-    const data = await fetchJSON({ action: 'save', user: auth.user, pw: auth.pw, name, date, weight, bp, sugar, gym, walk, walkDistance });
+    const data = await fetchJSON({ action: 'save', user: auth.user, pw: auth.pw, name, date, weight, bp, sugar, gym, walk, walkDistance, zumba });
     allItems = data.items;
     selectedName = name;
     focusDate = date;

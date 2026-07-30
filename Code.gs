@@ -17,7 +17,7 @@ function doGet(e) {
       case 'list':  result = requireLogin(ss, e.parameter.user, e.parameter.pw, () => getAllRows(sheet)); break;
       case 'save':  result = requireLogin(ss, e.parameter.user, e.parameter.pw, () =>
                       saveEntry(sheet, e.parameter.name, e.parameter.date, e.parameter.weight, e.parameter.bp, e.parameter.sugar,
-                                e.parameter.gym, e.parameter.walk, e.parameter.walkDistance)); break;
+                                e.parameter.gym, e.parameter.walk, e.parameter.walkDistance, e.parameter.zumba)); break;
       default:      result = { error: 'Unknown action: ' + action };
     }
   } catch (err) {
@@ -32,7 +32,7 @@ function doGet(e) {
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 function ensureHeaders(sheet) {
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(['ID', 'Name', 'Date', 'Weight', 'Blood Pressure', 'Blood Sugar', 'Gym', 'Walk', 'Walk Distance']);
+    sheet.appendRow(['ID', 'Name', 'Date', 'Weight', 'Blood Pressure', 'Blood Sugar', 'Gym', 'Walk', 'Walk Distance', 'Zumba']);
   }
 }
 
@@ -100,7 +100,7 @@ function getAllRows(sheet) {
   const data = sheet.getDataRange().getValues();
   const items = [];
   for (let i = 1; i < data.length; i++) {
-    const [id, name, date, weight, bp, sugar, gym, walk, walkDistance] = data[i];
+    const [id, name, date, weight, bp, sugar, gym, walk, walkDistance, zumba] = data[i];
     if (!name) continue;
     items.push({
       id: id,
@@ -111,13 +111,14 @@ function getAllRows(sheet) {
       sugar: sugar ? String(sugar) : '',
       gym: toBool(gym),
       walk: toBool(walk),
-      walkDistance: walkDistance ? Number(walkDistance) : null
+      walkDistance: walkDistance ? Number(walkDistance) : null,
+      zumba: toBool(zumba)
     });
   }
   return { items };
 }
 
-function saveEntry(sheet, name, dateStr, weightStr, bp, sugar, gym, walk, walkDistance) {
+function saveEntry(sheet, name, dateStr, weightStr, bp, sugar, gym, walk, walkDistance, zumba) {
   if (!name || !dateStr || !weightStr) return { error: 'Missing name, date, or weight' };
   ensureHeaders(sheet);
 
@@ -125,6 +126,7 @@ function saveEntry(sheet, name, dateStr, weightStr, bp, sugar, gym, walk, walkDi
   const gymBool = toBool(gym);
   const walkBool = toBool(walk);
   const walkDist = walkDistance ? Number(walkDistance) : '';
+  const zumbaBool = toBool(zumba);
   const data = sheet.getDataRange().getValues();
 
   let maxId = 0;
@@ -137,7 +139,7 @@ function saveEntry(sheet, name, dateStr, weightStr, bp, sugar, gym, walk, walkDi
     }
   }
 
-  const row = [weight, bp || '', sugar || '', gymBool, walkBool, walkDist];
+  const row = [weight, bp || '', sugar || '', gymBool, walkBool, walkDist, zumbaBool];
   if (targetRow !== -1) {
     sheet.getRange(targetRow, 4, 1, row.length).setValues([row]);
   } else {
