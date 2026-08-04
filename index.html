@@ -186,6 +186,10 @@ td.num, th.num { text-align: right; }
       <div class="field checkbox-field">
         <label><input type="checkbox" id="zumbaInput"> Zumba</label>
       </div>
+      <div class="field">
+        <label for="stepsInput">Steps</label>
+        <input type="number" id="stepsInput" step="1" min="0" placeholder="steps">
+      </div>
     </div>
     <button class="btn" id="saveBtn">Check in</button>
     <div id="saveMsg"></div>
@@ -211,6 +215,7 @@ let gymChartInstance = null;
 let walkChartInstance = null;
 let walkDistanceChartInstance = null;
 let zumbaChartInstance = null;
+let stepsChartInstance = null;
 let auth = null; // { user, pw }
 let chartRangeDays = 30;
 
@@ -231,6 +236,7 @@ const gymInput     = document.getElementById('gymInput');
 const walkInput    = document.getElementById('walkInput');
 const walkDistanceInput = document.getElementById('walkDistanceInput');
 const zumbaInput   = document.getElementById('zumbaInput');
+const stepsInput   = document.getElementById('stepsInput');
 const saveBtn      = document.getElementById('saveBtn');
 const saveMsg      = document.getElementById('saveMsg');
 const main         = document.getElementById('main');
@@ -384,7 +390,7 @@ function computeSeries(entries) {
     prevWeight = w;
 
     return { date: e.date, weight: w, bp: e.bp, sugar: e.sugar, gym: e.gym, walk: e.walk,
-             walkDistance: e.walkDistance, zumba: e.zumba, status, indicator, color, sign, deltaAbs };
+             walkDistance: e.walkDistance, zumba: e.zumba, steps: e.steps, status, indicator, color, sign, deltaAbs };
   });
 }
 
@@ -422,6 +428,7 @@ function render() {
 
   const windowed = windowLastNDays(series, chartRangeDays);
   const sugarPoints = windowed.filter(e => e.sugar).map(e => ({ date: e.date, sugar: Number(e.sugar) }));
+  const stepsPoints = windowed.filter(e => e.steps).map(e => ({ date: e.date, steps: Number(e.steps) }));
   const bpPoints = windowed.map(e => ({ date: e.date, ...parseBp(e.bp) })).filter(p => p.sys !== null && p.dia !== null);
   const weekly = weeklyAggregate(windowed);
   const anyGym = windowed.some(e => e.gym);
@@ -466,6 +473,11 @@ function render() {
         <span>&#9733; Grade 3</span>
       </div>
     </div>` : ''}
+    ${stepsPoints.length ? `
+    <div class="chart-card">
+      <h2>Steps — ${rangeLabel(chartRangeDays)}</h2>
+      <div class="chart-wrap"><canvas id="stepsChart"></canvas></div>
+    </div>` : ''}
     ${anyGym ? `
     <div class="chart-card">
       <h2>Gym Visits per Week — ${rangeLabel(chartRangeDays)}</h2>
@@ -489,7 +501,7 @@ function render() {
       <h2>History</h2>
       <table>
         <thead>
-          <tr><th>Date</th><th class="num">Weight</th><th class="num">Trend</th><th class="num">Δ</th><th>BP</th><th class="num">Sugar</th><th>Activity</th><th>Status</th><th></th></tr>
+          <tr><th>Date</th><th class="num">Weight</th><th class="num">Trend</th><th class="num">Δ</th><th>BP</th><th class="num">Sugar</th><th class="num">Steps</th><th>Activity</th><th>Status</th><th></th></tr>
         </thead>
         <tbody>
           ${series.slice().reverse().map(rowHTML).join('')}
@@ -505,6 +517,9 @@ function render() {
 
   if (bpPoints.length) renderBpChart(bpPoints);
   else if (bpChartInstance) { bpChartInstance.destroy(); bpChartInstance = null; }
+
+  if (stepsPoints.length) renderStepsChart(stepsPoints);
+  else if (stepsChartInstance) { stepsChartInstance.destroy(); stepsChartInstance = null; }
 
   if (anyGym) renderGymChart(weekly);
   else if (gymChartInstance) { gymChartInstance.destroy(); gymChartInstance = null; }
@@ -529,6 +544,7 @@ function rowHTML(e) {
       <td class="num">${e.deltaAbs === null ? '—' : e.deltaAbs.toFixed(1)}</td>
       <td>${e.bp || '—'}</td>
       <td class="num">${e.sugar || '—'}</td>
+      <td class="num">${e.steps || '—'}</td>
       <td>${activityParts(e).join(' ') || '—'}</td>
       <td>${e.status}</td>
       <td>${indicatorHTML(e, 16)}</td>
@@ -584,6 +600,32 @@ function renderSugarChart(points) {
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: { y: { ticks: { precision: 0 } } }
+    }
+  });
+}
+
+function renderStepsChart(points) {
+  if (stepsChartInstance) stepsChartInstance.destroy();
+  const ctx = document.getElementById('stepsChart').getContext('2d');
+  stepsChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: points.map(p => fmtDate(p.date)),
+      datasets: [{
+        data: points.map(p => p.steps),
+        borderColor: '#8430ce',
+        backgroundColor: 'rgba(132,48,206,.08)',
+        tension: 0.4,
+        fill: true,
+        pointRadius: 3,
+        pointBackgroundColor: '#8430ce'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
     }
   });
 }
@@ -728,6 +770,7 @@ function prefillForDate(date) {
   walkInput.checked = existing ? !!existing.walk : false;
   walkDistanceInput.value = existing && existing.walkDistance !== null ? existing.walkDistance : '';
   zumbaInput.checked = existing ? !!existing.zumba : false;
+  stepsInput.value = existing && existing.steps !== null ? existing.steps : '';
 }
 
 // ── data flow ────────────────────────────────────────────────────────────────
@@ -758,6 +801,7 @@ async function saveEntry() {
   const walk = walkInput.checked;
   const walkDistance = walkInput.checked ? walkDistanceInput.value : '';
   const zumba = zumbaInput.checked;
+  const steps = stepsInput.value;
 
   if (!name || !date || !weight) {
     saveMsg.innerHTML = '<div class="error-msg">Pick a date and weight first.</div>';
@@ -767,7 +811,7 @@ async function saveEntry() {
   saveBtn.disabled = true;
   saveMsg.innerHTML = '';
   try {
-    const data = await fetchJSON({ action: 'save', user: auth.user, pw: auth.pw, name, date, weight, bp, sugar, gym, walk, walkDistance, zumba });
+    const data = await fetchJSON({ action: 'save', user: auth.user, pw: auth.pw, name, date, weight, bp, sugar, gym, walk, walkDistance, zumba, steps });
     allItems = data.items;
     selectedName = name;
     focusDate = date;
