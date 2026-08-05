@@ -37,11 +37,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   margin: 0 auto; background: var(--gray-0); }
 header { position: sticky; top: 0; z-index: 10; background: var(--gray-0);
   border-bottom: 1px solid var(--gray-3); padding: 14px 16px; }
-header .header-top { display: flex; align-items: center; justify-content: space-between;
+header .header-top { display: flex; align-items: center; gap: 10px;
   margin-bottom: 12px; }
-header h1 { font-size: 20px; font-weight: 600; }
+header h1 { font-size: 20px; font-weight: 600; flex: 1; }
 .logout-link { font-size: 13px; color: var(--gray-7); background: none; border: none;
-  cursor: pointer; text-decoration: underline; }
+  cursor: pointer; text-decoration: underline; flex-shrink: 0; }
+.icon-toggle-btn { flex-shrink: 0; width: 30px; height: 30px; border-radius: var(--radius);
+  border: 1px solid var(--gray-3); background: var(--gray-0); color: var(--gray-7);
+  font-size: 13px; line-height: 1; cursor: pointer; }
+.icon-toggle-btn:active { background: var(--gray-2); }
+#checkinFields.collapsed { display: none; }
 main { flex: 1; padding: 16px 16px 40px; }
 
 /* ── login screen ── */
@@ -144,55 +149,58 @@ td.num, th.num { text-align: right; }
   <header>
     <div class="header-top">
       <h1>PWI — Weight Tracker</h1>
+      <button class="icon-toggle-btn" id="toggleFormBtn" aria-label="Collapse check-in form" title="Collapse check-in form">▲</button>
       <button class="logout-link" id="logoutBtn">Log out</button>
     </div>
     <div class="field">
       <label>Person</label>
       <div class="person-name" id="personName"></div>
     </div>
-    <div class="form-row">
-      <div class="field">
-        <label for="dateInput">Date</label>
-        <input type="date" id="dateInput">
+    <div id="checkinFields">
+      <div class="form-row">
+        <div class="field">
+          <label for="dateInput">Date</label>
+          <input type="date" id="dateInput">
+        </div>
+        <div class="field">
+          <label for="weightInput">Weight</label>
+          <input type="number" id="weightInput" step="0.1" placeholder="lbs">
+        </div>
       </div>
-      <div class="field">
-        <label for="weightInput">Weight</label>
-        <input type="number" id="weightInput" step="0.1" placeholder="lbs">
+      <div class="form-row">
+        <div class="field">
+          <label for="bpInput">Blood Pressure</label>
+          <input type="text" id="bpInput" placeholder="120/80">
+        </div>
+        <div class="field">
+          <label for="sugarInput">Blood Sugar</label>
+          <input type="number" id="sugarInput" step="1" placeholder="mg/dL">
+        </div>
       </div>
+      <div class="form-row">
+        <div class="field checkbox-field">
+          <label><input type="checkbox" id="gymInput"> Gym</label>
+        </div>
+        <div class="field checkbox-field">
+          <label><input type="checkbox" id="walkInput"> Walk</label>
+        </div>
+        <div class="field">
+          <label for="walkDistanceInput">Walk Distance</label>
+          <input type="number" id="walkDistanceInput" step="0.1" placeholder="mi">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field checkbox-field">
+          <label><input type="checkbox" id="zumbaInput"> Zumba</label>
+        </div>
+        <div class="field">
+          <label for="stepsInput">Steps</label>
+          <input type="number" id="stepsInput" step="1" min="0" placeholder="steps">
+        </div>
+      </div>
+      <button class="btn" id="saveBtn">Check in</button>
+      <div id="saveMsg"></div>
     </div>
-    <div class="form-row">
-      <div class="field">
-        <label for="bpInput">Blood Pressure</label>
-        <input type="text" id="bpInput" placeholder="120/80">
-      </div>
-      <div class="field">
-        <label for="sugarInput">Blood Sugar</label>
-        <input type="number" id="sugarInput" step="1" placeholder="mg/dL">
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="field checkbox-field">
-        <label><input type="checkbox" id="gymInput"> Gym</label>
-      </div>
-      <div class="field checkbox-field">
-        <label><input type="checkbox" id="walkInput"> Walk</label>
-      </div>
-      <div class="field">
-        <label for="walkDistanceInput">Walk Distance</label>
-        <input type="number" id="walkDistanceInput" step="0.1" placeholder="mi">
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="field checkbox-field">
-        <label><input type="checkbox" id="zumbaInput"> Zumba</label>
-      </div>
-      <div class="field">
-        <label for="stepsInput">Steps</label>
-        <input type="number" id="stepsInput" step="1" min="0" placeholder="steps">
-      </div>
-    </div>
-    <button class="btn" id="saveBtn">Check in</button>
-    <div id="saveMsg"></div>
   </header>
 
   <main id="main">
@@ -228,6 +236,8 @@ const logoutBtn    = document.getElementById('logoutBtn');
 
 const appEl        = document.getElementById('app');
 const personName   = document.getElementById('personName');
+const checkinFields = document.getElementById('checkinFields');
+const toggleFormBtn = document.getElementById('toggleFormBtn');
 const dateInput    = document.getElementById('dateInput');
 const weightInput  = document.getElementById('weightInput');
 const bpInput      = document.getElementById('bpInput');
@@ -818,7 +828,7 @@ async function saveEntry() {
     render();
     prefillForDate(date);
     saveMsg.innerHTML = '<div class="saved-msg">Saved.</div>';
-    setTimeout(() => { saveMsg.innerHTML = ''; }, 2500);
+    setTimeout(() => { saveMsg.innerHTML = ''; setFormCollapsed(true); }, 2500);
   } catch (err) {
     saveMsg.innerHTML = `<div class="error-msg">Couldn't save: ${err.message}</div>`;
   } finally {
@@ -828,6 +838,19 @@ async function saveEntry() {
 
 saveBtn.addEventListener('click', saveEntry);
 logoutBtn.addEventListener('click', () => showLogin());
+
+// ── collapsible check-in form (frees up screen space for the graphs) ───────
+let formCollapsed = false;
+
+function setFormCollapsed(collapsed) {
+  formCollapsed = collapsed;
+  checkinFields.classList.toggle('collapsed', collapsed);
+  toggleFormBtn.textContent = collapsed ? '▼' : '▲';
+  toggleFormBtn.title = collapsed ? 'Show check-in form' : 'Collapse check-in form';
+  toggleFormBtn.setAttribute('aria-label', toggleFormBtn.title);
+}
+
+toggleFormBtn.addEventListener('click', () => setFormCollapsed(!formCollapsed));
 dateInput.addEventListener('change', () => prefillForDate(dateInput.value));
 main.addEventListener('click', (ev) => {
   const btn = ev.target.closest('.range-btn');
