@@ -54,16 +54,17 @@ All charts share a **30-day / 90-day / 1-year** range toggle:
 
 ## Recent history (most recent first)
 
-1. Add Zumba tracking with a weekly sessions chart
-2. Add Gym/Walk/Walk Distance tracking with weekly activity charts
-3. Rename save button to "Check in" and prefill fields for existing dates
-4. Add 30/90/365-day range toggle for all charts
-5. Fix BP legend overlapping History heading
-6. Show WHO blood pressure severity as point shape on the BP chart
-7. Add 30-day Blood Sugar and Blood Pressure charts
-8. Lock Person field to the logged-in user
-9. Add blood pressure/sugar tracking and simple login via Users sheet
-10. Initial commit: PWI weight tracker
+1. Show delta from running minimum in status text (e.g. "New Min", "Equal Min", ">Min 2.2") on the banner and history table
+2. Add Zumba tracking with a weekly sessions chart
+3. Add Gym/Walk/Walk Distance tracking with weekly activity charts
+4. Rename save button to "Check in" and prefill fields for existing dates
+5. Add 30/90/365-day range toggle for all charts
+6. Fix BP legend overlapping History heading
+7. Show WHO blood pressure severity as point shape on the BP chart
+8. Add 30-day Blood Sugar and Blood Pressure charts
+9. Lock Person field to the logged-in user
+10. Add blood pressure/sugar tracking and simple login via Users sheet
+11. Initial commit: PWI weight tracker
 
 ## Not yet done / ideas
 

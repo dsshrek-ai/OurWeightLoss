@@ -370,12 +370,13 @@ function computeSeries(entries) {
   return sorted.map((e, idx) => {
     const w = round1(e.weight);
 
-    let status, indicator, color;
+    let status, indicator, color, minDelta = null;
     if (idx === 0) {
       // First-ever entry for this person: nothing to compare against yet.
       status = 'Start'; indicator = 'dot'; color = 'gray';
     } else {
       const diff = round1(w - runningMin);
+      minDelta = diff;
       if (diff < 0) {
         status = 'NewMin'; indicator = 'emoji';
       } else if (diff === 0) {
@@ -400,7 +401,7 @@ function computeSeries(entries) {
     prevWeight = w;
 
     return { date: e.date, weight: w, bp: e.bp, sugar: e.sugar, gym: e.gym, walk: e.walk,
-             walkDistance: e.walkDistance, zumba: e.zumba, steps: e.steps, status, indicator, color, sign, deltaAbs };
+             walkDistance: e.walkDistance, zumba: e.zumba, steps: e.steps, status, indicator, color, sign, deltaAbs, minDelta };
   });
 }
 
@@ -410,6 +411,18 @@ function activityParts(e) {
   if (e.walk) parts.push(e.walkDistance ? `🚶 ${e.walkDistance} mi` : '🚶 Walk');
   if (e.zumba) parts.push('💃 Zumba');
   return parts;
+}
+
+// Readable status text with the delta from the running minimum, e.g.
+// "New Min", "Equal Min", or ">Min 2.2" — the lowest weight ever recorded
+// is treated as the baseline (your last "celebration" point).
+function statusLabel(e) {
+  switch (e.status) {
+    case 'Start':  return 'Start';
+    case 'NewMin': return 'New Min';
+    case '=Min':   return 'Equal Min';
+    default:       return `${e.status} ${e.minDelta.toFixed(1)}`; // '>Min 2.2' / '>Max 6.3'
+  }
 }
 
 function indicatorHTML(entry, size) {
@@ -452,7 +465,7 @@ function render() {
       <div class="indicator">${indicatorHTML(focus, 36)}</div>
       <div class="info">
         <div class="name">${selectedName} — ${fmtDate(focus.date)}</div>
-        <div class="status">${focus.status}</div>
+        <div class="status">${statusLabel(focus)}</div>
         <div class="weight">${focus.weight.toFixed(1)} lbs</div>
         ${vitals ? `<div class="vitals">${vitals}</div>` : ''}
       </div>
@@ -556,7 +569,7 @@ function rowHTML(e) {
       <td class="num">${e.sugar || '—'}</td>
       <td class="num">${e.steps || '—'}</td>
       <td>${activityParts(e).join(' ') || '—'}</td>
-      <td>${e.status}</td>
+      <td>${statusLabel(e)}</td>
       <td>${indicatorHTML(e, 16)}</td>
     </tr>
   `;
