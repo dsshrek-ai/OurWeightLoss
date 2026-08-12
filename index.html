@@ -63,8 +63,6 @@ main { flex: 1; padding: 16px 16px 40px; }
 .field select, .field input { width: 100%; font-size: 15px; padding: 9px 10px;
   border: 1px solid var(--gray-3); border-radius: var(--radius);
   background: var(--gray-0); color: var(--gray-9); }
-.person-name { padding: 9px 10px; border: 1px solid var(--gray-3); border-radius: var(--radius);
-  background: var(--gray-2); color: var(--gray-9); font-size: 15px; font-weight: 500; }
 .form-row { display: flex; gap: 10px; }
 .form-row .field { flex: 1; }
 .checkbox-field { display: flex; align-items: center; }
@@ -133,12 +131,12 @@ td.num, th.num { text-align: right; }
   <div class="login-card">
     <h1>PWI — Weight Tracker</h1>
     <div class="field">
-      <label for="loginName">Name</label>
-      <select id="loginName"></select>
+      <label for="loginEmail">Email</label>
+      <input type="email" id="loginEmail" autocomplete="username">
     </div>
     <div class="field">
       <label for="loginPw">Password</label>
-      <input type="password" id="loginPw">
+      <input type="password" id="loginPw" autocomplete="current-password">
     </div>
     <button class="btn" id="loginBtn">Log in</button>
     <div id="loginMsg"></div>
@@ -151,10 +149,6 @@ td.num, th.num { text-align: right; }
       <h1>PWI — Weight Tracker</h1>
       <button class="icon-toggle-btn" id="toggleFormBtn" aria-label="Collapse check-in form" title="Collapse check-in form">▲</button>
       <button class="logout-link" id="logoutBtn">Log out</button>
-    </div>
-    <div class="field">
-      <label>Person</label>
-      <div class="person-name" id="personName"></div>
     </div>
     <div id="checkinFields">
       <div class="form-row">
@@ -210,11 +204,10 @@ td.num, th.num { text-align: right; }
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzepqhhk61O2a6BwALRmIoA_lE5hZKpN_DoX3x0L2VdQpFPkL5dJii1TmpNyJPUPRCo/exec';
-const AUTH_KEY = 'pwi_auth';
+const API_URL = 'https://seniorfamily.org/pwi-api/api.php';
+const AUTH_KEY = 'pwiAuth';
 
 let allItems = [];
-let selectedName = '';
 let focusDate = null; // when set, banner shows this date's entry instead of the latest
 let chartInstance = null;
 let sugarChartInstance = null;
@@ -224,18 +217,17 @@ let walkChartInstance = null;
 let walkDistanceChartInstance = null;
 let zumbaChartInstance = null;
 let stepsChartInstance = null;
-let auth = null; // { user, pw }
+let auth = null; // { token, displayName }
 let chartRangeDays = 30;
 
 const loginScreen  = document.getElementById('loginScreen');
-const loginName    = document.getElementById('loginName');
+const loginEmail   = document.getElementById('loginEmail');
 const loginPw      = document.getElementById('loginPw');
 const loginBtn     = document.getElementById('loginBtn');
 const loginMsg     = document.getElementById('loginMsg');
 const logoutBtn    = document.getElementById('logoutBtn');
 
 const appEl        = document.getElementById('app');
-const personName   = document.getElementById('personName');
 const checkinFields = document.getElementById('checkinFields');
 const toggleFormBtn = document.getElementById('toggleFormBtn');
 const dateInput    = document.getElementById('dateInput');
@@ -334,12 +326,15 @@ function windowLastNDays(series, days) {
   return series.filter(e => e.date >= cutoffISO && e.date <= lastDate);
 }
 
-async function fetchJSON(params) {
-  const url = SCRIPT_URL + '?' + new URLSearchParams(params).toString();
-  const res = await fetch(url);
+async function fetchJSON(action, opts = {}) {
+  const res = await fetch(`${API_URL}?action=${action}`, opts);
   const data = await res.json();
-  if (data.error) throw new Error(data.error);
+  if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
+}
+
+function authHeaders() {
+  return { 'Authorization': `Bearer ${auth.token}`, 'Content-Type': 'application/json' };
 }
 
 // ── auth storage ────────────────────────────────────────────────────────────
@@ -434,14 +429,9 @@ function indicatorHTML(entry, size) {
 
 // ── rendering ────────────────────────────────────────────────────────────────
 function render() {
-  if (!selectedName) {
-    main.innerHTML = '<div class="status-msg">No people found in the sheet yet.</div>';
-    return;
-  }
-
-  const series = computeSeries(allItems.filter(i => i.name === selectedName));
+  const series = computeSeries(allItems);
   if (series.length === 0) {
-    main.innerHTML = '<div class="status-msg">No entries yet for ' + selectedName + '.</div>';
+    main.innerHTML = '<div class="status-msg">No entries yet — add your first check-in above.</div>';
     return;
   }
 
@@ -464,7 +454,7 @@ function render() {
     <div class="banner">
       <div class="indicator">${indicatorHTML(focus, 36)}</div>
       <div class="info">
-        <div class="name">${selectedName} — ${fmtDate(focus.date)}</div>
+        <div class="name">${fmtDate(focus.date)}</div>
         <div class="status">${statusLabel(focus)}</div>
         <div class="weight">${focus.weight.toFixed(1)} lbs</div>
         ${vitals ? `<div class="vitals">${vitals}</div>` : ''}
@@ -784,8 +774,7 @@ function renderZumbaChart(weekly) {
 // purpose rather than by surprise, and so entering just one new field (e.g.
 // blood sugar) doesn't blank out that day's weight/BP.
 function prefillForDate(date) {
-  if (!selectedName) return;
-  const existing = allItems.find(i => i.name === selectedName && i.date === date);
+  const existing = allItems.find(i => i.date === date);
   weightInput.value = existing ? existing.weight : '';
   bpInput.value = existing ? (existing.bp || '') : '';
   sugarInput.value = existing ? (existing.sugar || '') : '';
@@ -799,14 +788,12 @@ function prefillForDate(date) {
 // ── data flow ────────────────────────────────────────────────────────────────
 async function loadData() {
   try {
-    const data = await fetchJSON({ action: 'list', user: auth.user, pw: auth.pw });
-    allItems = data.items;
-    selectedName = auth.user;
-    personName.textContent = auth.user;
+    const data = await fetchJSON('listEntries', { headers: authHeaders() });
+    allItems = data.entries;
     render();
     prefillForDate(dateInput.value);
   } catch (err) {
-    if (/incorrect|password/i.test(err.message)) {
+    if (/session|authoriz/i.test(err.message)) {
       showLogin('Your saved login stopped working. Please log in again.');
     } else {
       main.innerHTML = `<div class="error-msg">Couldn't load data: ${err.message}</div>`;
@@ -815,7 +802,6 @@ async function loadData() {
 }
 
 async function saveEntry() {
-  const name = auth.user;
   const date = dateInput.value;
   const weight = weightInput.value;
   const bp = bpInput.value.trim();
@@ -826,7 +812,7 @@ async function saveEntry() {
   const zumba = zumbaInput.checked;
   const steps = stepsInput.value;
 
-  if (!name || !date || !weight) {
+  if (!date || !weight) {
     saveMsg.innerHTML = '<div class="error-msg">Pick a date and weight first.</div>';
     return;
   }
@@ -834,9 +820,11 @@ async function saveEntry() {
   saveBtn.disabled = true;
   saveMsg.innerHTML = '';
   try {
-    const data = await fetchJSON({ action: 'save', user: auth.user, pw: auth.pw, name, date, weight, bp, sugar, gym, walk, walkDistance, zumba, steps });
-    allItems = data.items;
-    selectedName = name;
+    const data = await fetchJSON('saveEntry', {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({ date, weight, bp, sugar, gym, walk, walkDistance, zumba, steps })
+    });
+    allItems = data.entries;
     focusDate = date;
     render();
     prefillForDate(date);
@@ -850,7 +838,11 @@ async function saveEntry() {
 }
 
 saveBtn.addEventListener('click', saveEntry);
-logoutBtn.addEventListener('click', () => showLogin());
+
+logoutBtn.addEventListener('click', async () => {
+  try { await fetchJSON('logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: auth.token }) }); } catch {}
+  showLogin();
+});
 
 // ── collapsible check-in form (frees up screen space for the graphs) ───────
 let formCollapsed = false;
@@ -873,28 +865,21 @@ main.addEventListener('click', (ev) => {
 });
 
 // ── login flow ──────────────────────────────────────────────────────────────
-async function populateLoginNames() {
-  try {
-    const data = await fetchJSON({ action: 'users' });
-    loginName.innerHTML = data.names.map(n => `<option value="${n}">${n}</option>`).join('');
-  } catch (err) {
-    loginMsg.innerHTML = `<div class="error-msg">Couldn't load users: ${err.message}</div>`;
-  }
-}
-
 async function attemptLogin() {
-  const user = loginName.value;
-  const pw = loginPw.value;
-  if (!user || !pw) {
-    loginMsg.innerHTML = '<div class="error-msg">Pick your name and enter your password.</div>';
+  const username = loginEmail.value.trim();
+  const password = loginPw.value;
+  if (!username || !password) {
+    loginMsg.innerHTML = '<div class="error-msg">Enter your email and password.</div>';
     return;
   }
   loginBtn.disabled = true;
   loginMsg.innerHTML = '';
   try {
-    const result = await fetchJSON({ action: 'login', user, pw });
-    if (!result.ok) throw new Error(result.error || 'Incorrect name or password');
-    auth = { user, pw };
+    const data = await fetchJSON('login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    auth = { token: data.token, displayName: data.displayName || username };
     saveAuth(auth);
     loginPw.value = '';
     showApp();
@@ -912,11 +897,21 @@ loginPw.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') attemptLog
 
 dateInput.value = todayISO();
 
-if (SCRIPT_URL.includes('YOUR_APPS_SCRIPT_URL')) {
-  document.body.innerHTML = '<div class="error-msg" style="margin:24px">Set SCRIPT_URL in index.html to your deployed Apps Script URL (see SETUP.md).</div>';
+// ── init ────────────────────────────────────────────────────────────────
+if (API_URL.includes('YOUR_')) {
+  document.body.innerHTML = '<div class="error-msg" style="margin:24px">Set API_URL in index.html to your deployed api.php URL.</div>';
 } else {
-  populateLoginNames();
-  auth = loadAuth();
+  // Single sign-on: My Apps Hub launches this app with ?token=... when the
+  // visitor is already logged in there, so this skips its own login screen.
+  const ssoToken = new URLSearchParams(window.location.search).get('token');
+  if (ssoToken) {
+    auth = { token: ssoToken, displayName: '' };
+    saveAuth(auth);
+    // Scrub the token from the address bar so it's never bookmarked/shared.
+    window.history.replaceState({}, document.title, window.location.pathname);
+  } else {
+    auth = loadAuth();
+  }
   if (auth) {
     showApp();
     loadData();

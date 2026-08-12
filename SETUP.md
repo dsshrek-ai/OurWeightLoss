@@ -1,92 +1,86 @@
-# PWI — Setup Guide
+# PWI Weight Tracker — Setup
 
-## Step 1: Confirm your Google Sheet
+Log daily weigh-ins — plus BP, blood sugar, gym/walk/Zumba, and steps — and
+see how you're tracking, with a color-coded readout and weekly activity
+charts. Backed by **MyDataWorld**, the same shared database as My Apps Hub,
+T-Minus, and Shed Inventory — one login works everywhere. Data is private
+per account: nobody can see another person's entries.
 
-Your `OurWeightLossProgram` sheet already has the right layout — just confirm row 1 has these exact headers, columns A–J:
+See the "Data migration" section below if you're moving off the old Google
+Sheets version — this replaces it entirely.
 
-| A  | B    | C    | D      | E              | F           | G   | H    | I             | J      |
-|----|------|------|--------|----------------|-------------|-----|------|---------------|--------|
-| ID | Name | Date | Weight | Blood Pressure | Blood Sugar | Gym | Walk | Walk Distance | Zumba  |
+## 1. Update the database
 
-Gym, Walk, and Zumba are recorded as checkboxes in the app (TRUE/FALSE). To make columns G, H, and J show as checkboxes in the sheet itself, select the column and use **Insert → Checkbox** — not required, but it keeps manual edits consistent with what the app writes. Walk Distance is a plain number in miles.
+Open **phpMyAdmin**, select the MyDataWorld database, go to the **SQL** tab,
+and run everything in [`api/schema.sql`](api/schema.sql). It's safe to run
+even if `users`/`sessions` already exist (from My Apps Hub/T-Minus/Shed
+Inventory) — those use `CREATE TABLE IF NOT EXISTS`. This adds one new
+table, `pwi_entries`.
 
-Copy the **Spreadsheet ID** from the URL:
-`https://docs.google.com/spreadsheets/d/`**`THIS_PART`**`/edit`
+## 2. Deploy the API
 
-Also note the **tab name** at the bottom of the sheet (e.g. `Sheet1`) — you'll need it below.
+1. Copy `api/config.example.php` to `api/config.php` and fill in the real
+   `DB_NAME`, `DB_USER`, `DB_PASS` — same credentials as your other
+   MyDataWorld apps.
+2. Upload the whole `api/` folder via FTP/File Manager — e.g.
+   `seniorfamily.org/pwi-api/`.
 
-### Add a "Users" tab
+## 3. Point the app at your API
 
-Add a second tab named exactly **`Users`** with these headers, columns A–C:
-
-| A  | B    | C  |
-|----|------|----|
-| ID | Name | PW |
-
-Add one row per person, e.g. `1, Dennis, ****`, `2, Elaine, ****`. The `Name` here must exactly match (case-sensitive) the name used on the weigh-in tab. This is the **only** place logins/accounts are managed — the app itself no longer lets anyone create a user. Passwords are stored in plain text on this tab, so treat it like any other simple/shared-household password — it's not meant to protect sensitive data.
-
----
-
-## Step 2: Deploy the Apps Script
-
-1. In your Sheet, go to **Extensions → Apps Script**
-2. Delete the default `myFunction` code
-3. Paste in the contents of `Code.gs` from this folder
-4. Replace `YOUR_SPREADSHEET_ID` on line 2 with the ID you copied above
-5. Replace `Sheet1` on line 3 with your actual weigh-in tab name, if different
-6. Leave `Users` on line 4 as-is unless you named that tab something else
-7. Click **Save** (floppy disk icon)
-8. Click **Deploy → New deployment**
-9. Click the gear icon next to "Type" and choose **Web app**
-10. Set:
-    - **Execute as:** Me
-    - **Who has access:** Anyone
-11. Click **Deploy**
-12. Click **Authorize access** and follow the Google prompts
-13. Copy the **Web app URL** — it looks like:
-    `https://script.google.com/macros/s/ABC123.../exec`
-
-If you already had this deployed before, use **Deploy → Manage deployments → edit (pencil) → New version → Deploy** instead, so the existing URL keeps working.
-
----
-
-## Step 3: Configure the app
-
-Open `index.html` in a text editor and find this line near the top of the `<script>` block:
+In `index.html`:
 
 ```js
-const SCRIPT_URL = 'YOUR_APPS_SCRIPT_URL';
+const API_URL = 'https://seniorfamily.org/pwi-api/api.php';
 ```
 
-Replace `YOUR_APPS_SCRIPT_URL` with the URL you copied in Step 2. Save the file.
+## 4. Publish
 
----
+Push this repo (already set up for GitHub Pages) or upload `index.html`
+directly to seniorfamily.org — your call, same as the other MyDataWorld
+apps.
 
-## Step 4: Publish to GitHub Pages
+## 5. Accounts
 
-1. Create a new **public** repository on GitHub (e.g. `pwi`)
-2. Push this folder's contents to the `main` branch:
-   ```
-   git init
-   git add .
-   git commit -m "Initial commit"
-   git remote add origin https://github.com/YOUR_USERNAME/pwi.git
-   git push -u origin main
-   ```
-3. In the repo on GitHub, go to **Settings → Pages**
-4. Under "Source", select **Deploy from a branch → main → / (root)**
-5. Click **Save** — your app will be live at:
-   `https://YOUR_USERNAME.github.io/pwi/`
+There's no separate signup here — everyone logs in with the same account
+they use for **My Apps Hub**. If you haven't already, sign up there first
+with the email you want tied to your weigh-ins.
 
----
+## 6. Register with My Apps Hub (optional but recommended)
+
+The Hub already has a `pwi-weight-tracker` row. Once this is deployed, mark
+it SSO-enabled so logging into the Hub also logs you into PWI automatically:
+
+```sql
+UPDATE apps SET sso_enabled = 1 WHERE app_key = 'pwi-weight-tracker';
+```
+
+(my-apps-hub's own `api/schema.sql` seed list should be updated to match, so
+a future re-run doesn't flip it back to 0.)
+
+## Data migration (Google Sheets → MyDataWorld)
+
+If you're moving existing history out of the old `OurWeightLossProgram`
+sheet:
+
+1. Make sure everyone who has historical rows already has a MyDataWorld
+   account (Step 5 above) — you need their `users.id` to re-key their data.
+2. Export the weigh-in tab as CSV (**File → Download → Comma-separated
+   values**).
+3. Import that CSV into a staging table in phpMyAdmin (**Import** tab, or
+   `LOAD DATA LOCAL INFILE`), then run an `INSERT ... SELECT` that joins the
+   staging table's `Name` column to the right `users.id` (via each person's
+   email) and inserts into `pwi_entries`. See the project owner's own copy
+   of this migration script for the exact `Name → email` mapping used —
+   it's specific to who was in the sheet, not something to template here.
+4. Spot-check a few rows in `pwi_entries` against the original sheet, then
+   the old Apps Script deployment and `Code.gs` can be retired.
 
 ## Notes
 
-- The Google Sheet is the source of truth — you can view/edit data there anytime.
-- The Apps Script runs as your Google account, so the Sheet stays private even though the app URL is public.
-- If you redeploy the Apps Script after changes, the URL stays the same — no need to update `index.html`.
-- Submitting a weight for a person/date that already has an entry **overwrites** that row rather than creating a duplicate.
-- The app no longer lets anyone add a new person from the UI. To add someone, add a row for them on the **Users** tab (Name + PW) — they'll then appear in both the login screen and the Person dropdown.
-- Logging in requires picking your name and entering the matching password from the **Users** tab. A successful login is remembered on that device (via `localStorage`) so you won't have to log in every visit — use **Log out** to clear it.
-- Blood Pressure, Blood Sugar, Gym, Walk, Walk Distance, and Zumba are all optional on each weigh-in; leave them blank/unchecked to skip.
-- A person's very first-ever weigh-in shows a neutral **Start** indicator (gray dot) since there's no prior minimum to compare against yet. Every entry after that uses the normal green/yellow/red/NewMin rules.
+- Submitting a check-in for a date that already has one **overwrites** it
+  (`UNIQUE(user_id, entry_date)` in the schema) rather than creating a
+  duplicate — same behavior as before.
+- A person's very first-ever weigh-in shows a neutral **Start** indicator
+  (gray dot) since there's no prior minimum to compare against yet.
+- Blood Pressure, Blood Sugar, Gym, Walk, Walk Distance, Steps, and Zumba
+  are all optional on each check-in.
