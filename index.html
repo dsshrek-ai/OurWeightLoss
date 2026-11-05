@@ -124,6 +124,38 @@ td.num, th.num { text-align: right; }
 .dot-red { background: var(--red); }
 .dot-gray { background: var(--gray-5); }
 .emoji-cell { font-size: 15px; }
+
+/* ── medications ── */
+.med-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.med-head h2 { margin-bottom: 0; }
+.link-btn { background: none; border: none; color: var(--blue); font-size: 14px; cursor: pointer;
+  text-decoration: underline; padding: 4px; }
+.muted { color: var(--gray-7); font-size: 13px; margin-bottom: 10px; }
+.dose-list { list-style: none; margin-top: 12px; }
+.dose-row { width: 100%; text-align: left; background: none; border: none; border-top: 1px solid var(--gray-3);
+  padding: 9px 2px; cursor: pointer; font: inherit; color: inherit; display: block; }
+.dose-row:hover { background: var(--gray-1); }
+.dose-row .dose-main { font-weight: 600; font-size: 14px; }
+.dose-row .dose-sub { font-size: 12px; color: var(--gray-7); }
+.dose-row .dose-notes { font-size: 12px; color: var(--gray-7); font-style: italic; }
+.field textarea { width: 100%; font: inherit; font-size: 15px; padding: 9px 10px; min-height: 64px;
+  border: 1px solid var(--gray-3); border-radius: var(--radius); resize: vertical; }
+.hint { font-size: 12px; color: var(--gray-7); margin-top: 4px; }
+.btn-secondary { background: var(--gray-0); color: var(--gray-9); border: 1px solid var(--gray-3); }
+.btn-secondary:hover { background: var(--gray-2); }
+.btn-danger { background: var(--gray-0); color: var(--red); border: 1px solid var(--red); }
+.btn-danger:hover { background: var(--red-lt); }
+.btn-row { display: flex; gap: 8px; margin-top: 4px; }
+.modal { display: none; position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.45);
+  align-items: flex-start; justify-content: center; padding: 24px 12px; overflow-y: auto; }
+.modal.open { display: flex; }
+.modal-card { width: 100%; max-width: 440px; background: var(--gray-0); border-radius: 12px;
+  padding: 18px; box-shadow: var(--shadow-md); }
+.modal-card h2 { font-size: 17px; font-weight: 600; margin-bottom: 14px; }
+.med-list { list-style: none; margin-top: 16px; }
+.med-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  border-top: 1px solid var(--gray-3); padding: 9px 2px; font-size: 14px; }
+.med-list .inactive { color: var(--gray-5); }
 </style>
 </head>
 <body>
@@ -200,6 +232,78 @@ td.num, th.num { text-align: right; }
   <main id="main">
     <div class="status-msg">Loading…</div>
   </main>
+</div>
+
+<!-- Record / edit a medication dose -->
+<div class="modal" id="doseModal" role="dialog" aria-modal="true" aria-labelledby="doseTitle">
+  <div class="modal-card">
+    <h2 id="doseTitle">Record a dose</h2>
+    <div class="form-row">
+      <div class="field">
+        <label for="doseDate">Date</label>
+        <input type="date" id="doseDate">
+      </div>
+      <div class="field">
+        <label for="doseTime">Time</label>
+        <input type="time" id="doseTime">
+      </div>
+    </div>
+    <div class="field">
+      <label for="doseMed">Medication</label>
+      <select id="doseMed"></select>
+    </div>
+    <div class="field">
+      <label for="doseDosage">Dosage</label>
+      <input type="text" id="doseDosage" maxlength="50" placeholder="e.g. 2.5 mg">
+    </div>
+    <div class="field" id="doseSiteField">
+      <label for="doseSite">Injection site</label>
+      <select id="doseSite"></select>
+      <div class="hint" id="doseSiteHint"></div>
+    </div>
+    <div class="field">
+      <label for="doseNotes">Notes</label>
+      <textarea id="doseNotes" maxlength="500"></textarea>
+    </div>
+    <div id="doseMsg"></div>
+    <div class="btn-row">
+      <button class="btn" id="doseSaveBtn">Save</button>
+      <button class="btn btn-secondary" id="doseCancelBtn">Cancel</button>
+    </div>
+    <div class="btn-row" id="doseDeleteRow" style="margin-top:10px">
+      <button class="btn btn-danger" id="doseDeleteBtn">Delete this dose</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manage medications -->
+<div class="modal" id="medModal" role="dialog" aria-modal="true" aria-labelledby="medTitle">
+  <div class="modal-card">
+    <h2 id="medTitle">Medications</h2>
+    <div class="field">
+      <label for="medName">Name</label>
+      <input type="text" id="medName" maxlength="100" placeholder="e.g. Mounjaro">
+    </div>
+    <div class="field">
+      <label for="medDosage">Usual dosage (optional)</label>
+      <input type="text" id="medDosage" maxlength="50" placeholder="e.g. 2.5 mg">
+    </div>
+    <div class="field checkbox-field">
+      <label><input type="checkbox" id="medInjection"> It's an injection (asks for the injection site)</label>
+    </div>
+    <div class="field checkbox-field" id="medActiveField">
+      <label><input type="checkbox" id="medActive"> Active (shows in the Record dose list)</label>
+    </div>
+    <div id="medMsg"></div>
+    <div class="btn-row">
+      <button class="btn" id="medSaveBtn">Add medication</button>
+      <button class="btn btn-secondary" id="medNewBtn">New</button>
+    </div>
+    <ul class="med-list" id="medList"></ul>
+    <div class="btn-row" style="margin-top:14px">
+      <button class="btn btn-secondary" id="medCloseBtn">Done</button>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -347,6 +451,7 @@ function clearAuth() { localStorage.removeItem(AUTH_KEY); }
 function showLogin(message) {
   clearAuth();
   auth = null;
+  meds = []; doses = []; medsState = 'loading';
   appEl.style.display = 'none';
   loginScreen.style.display = 'flex';
   loginMsg.innerHTML = message ? `<div class="error-msg">${message}</div>` : '';
@@ -431,7 +536,8 @@ function indicatorHTML(entry, size) {
 function render() {
   const series = computeSeries(allItems);
   if (series.length === 0) {
-    main.innerHTML = '<div class="status-msg">No entries yet — add your first check-in above.</div>';
+    main.innerHTML = '<div id="medArea"></div><div class="status-msg">No entries yet — add your first check-in above.</div>';
+    renderMeds();
     return;
   }
 
@@ -460,6 +566,7 @@ function render() {
         ${vitals ? `<div class="vitals">${vitals}</div>` : ''}
       </div>
     </div>
+    <div id="medArea"></div>
     <div class="range-toggle">
       ${rangeBtn(30, '30D')}
       ${rangeBtn(90, '90D')}
@@ -545,6 +652,8 @@ function render() {
 
   if (anyZumba) renderZumbaChart(weekly);
   else if (zumbaChartInstance) { zumbaChartInstance.destroy(); zumbaChartInstance = null; }
+
+  renderMeds();
 }
 
 function rowHTML(e) {
@@ -792,6 +901,7 @@ async function loadData() {
     allItems = data.entries;
     render();
     prefillForDate(dateInput.value);
+    loadMeds();
   } catch (err) {
     if (/session|authoriz/i.test(err.message)) {
       showLogin('Your saved login stopped working. Please log in again.');
@@ -862,6 +972,263 @@ main.addEventListener('click', (ev) => {
   if (!btn) return;
   chartRangeDays = Number(btn.dataset.range);
   render();
+});
+
+// ── medications ─────────────────────────────────────────────────────────────
+// Loaded separately from check-ins so a problem here never hides the weights.
+let meds = [];
+let doses = [];          // newest first
+let medsState = 'loading'; // loading | ready | error
+let showAllDoses = false;
+let editingDose = null;  // dose being edited, or null for a new one
+let editingMed = null;   // medication being edited, or null for a new one
+const INJECTION_SITES = [
+  'Abdomen – left', 'Abdomen – right', 'Thigh – left', 'Thigh – right',
+  'Upper arm – left', 'Upper arm – right', 'Buttock – left', 'Buttock – right', 'Other',
+];
+
+const doseModal = document.getElementById('doseModal');
+const doseDate = document.getElementById('doseDate');
+const doseTime = document.getElementById('doseTime');
+const doseMed = document.getElementById('doseMed');
+const doseDosage = document.getElementById('doseDosage');
+const doseSiteField = document.getElementById('doseSiteField');
+const doseSite = document.getElementById('doseSite');
+const doseSiteHint = document.getElementById('doseSiteHint');
+const doseNotes = document.getElementById('doseNotes');
+const doseMsg = document.getElementById('doseMsg');
+const medModal = document.getElementById('medModal');
+const medName = document.getElementById('medName');
+const medDosage = document.getElementById('medDosage');
+const medInjection = document.getElementById('medInjection');
+const medActive = document.getElementById('medActive');
+const medActiveField = document.getElementById('medActiveField');
+const medSaveBtn = document.getElementById('medSaveBtn');
+const medMsg = document.getElementById('medMsg');
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function nowTimeHHMM() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+// "2026-11-05 08:05:00" -> "Thu 11/5/26 8:05 AM"
+function fmtTakenAt(takenAt) {
+  const [date, time] = takenAt.split(' ');
+  const [y, m, d] = date.split('-').map(Number);
+  const [hh, mm] = time.split(':').map(Number);
+  const weekday = new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short' });
+  return `${weekday} ${fmtDate(date)} ${hh % 12 || 12}:${String(mm).padStart(2, '0')} ${hh < 12 ? 'AM' : 'PM'}`;
+}
+
+function setMedData(data) {
+  meds = data.medications || [];
+  doses = data.doses || [];
+  medsState = 'ready';
+}
+
+async function loadMeds() {
+  try {
+    setMedData(await fetchJSON('listMedications', { headers: authHeaders() }));
+  } catch (err) {
+    medsState = 'error';
+  }
+  renderMeds();
+}
+
+function renderMeds() {
+  const area = document.getElementById('medArea');
+  if (!area) return;
+  if (medsState !== 'ready') {
+    area.innerHTML = medsState === 'error'
+      ? `<div class="chart-card"><h2>💊 Medications</h2><div class="muted">Couldn't load medications right now.</div></div>` : '';
+    return;
+  }
+  const active = meds.filter(m => m.active);
+  const shown = showAllDoses ? doses : doses.slice(0, 5);
+  area.innerHTML = `
+    <div class="chart-card">
+      <div class="med-head">
+        <h2>💊 Medications</h2>
+        <button type="button" class="link-btn" data-med-action="manage">Manage</button>
+      </div>
+      ${active.length
+        ? `<button type="button" class="btn" data-med-action="record">Record dose</button>`
+        : `<div class="muted">Add your medications to start recording doses.</div>
+           <button type="button" class="btn" data-med-action="manage">Add a medication</button>`}
+      ${shown.length ? `<ul class="dose-list">${shown.map(d => `
+        <li><button type="button" class="dose-row" data-dose-id="${d.id}">
+          <div class="dose-main">${escapeHtml(d.medication)}${d.dosage ? ` · ${escapeHtml(d.dosage)}` : ''}</div>
+          <div class="dose-sub">${fmtTakenAt(d.takenAt)}${d.injectionSite ? ` · ${escapeHtml(d.injectionSite)}` : ''}</div>
+          ${d.notes ? `<div class="dose-notes">${escapeHtml(d.notes)}</div>` : ''}
+        </button></li>`).join('')}</ul>` : ''}
+      ${doses.length > 5 ? `<button type="button" class="link-btn" data-med-action="toggle-all">${showAllDoses ? 'Show fewer' : `Show all ${doses.length} doses`}</button>` : ''}
+    </div>`;
+}
+
+main.addEventListener('click', (ev) => {
+  const action = ev.target.closest('[data-med-action]');
+  if (action) {
+    if (action.dataset.medAction === 'record') openDoseModal(null);
+    else if (action.dataset.medAction === 'manage') openMedModal();
+    else if (action.dataset.medAction === 'toggle-all') { showAllDoses = !showAllDoses; renderMeds(); }
+    return;
+  }
+  const row = ev.target.closest('[data-dose-id]');
+  if (row) openDoseModal(doses.find(d => d.id === Number(row.dataset.doseId)) || null);
+});
+
+// The most recent dose of a medication, optionally skipping one (the dose being edited).
+function lastDoseOf(medId, skipId) {
+  return doses.find(d => d.medicationId === medId && d.id !== skipId) || null;
+}
+
+function openDoseModal(dose) {
+  editingDose = dose;
+  document.getElementById('doseTitle').textContent = dose ? 'Edit dose' : 'Record a dose';
+  document.getElementById('doseDeleteRow').style.display = dose ? '' : 'none';
+  doseMsg.innerHTML = '';
+  // Active medications, plus the dose's own one if it has since been deactivated.
+  const choices = meds.filter(m => m.active || (dose && m.id === dose.medicationId));
+  doseMed.innerHTML = choices.map(m => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join('');
+  doseSite.innerHTML = `<option value="">(choose)</option>` + INJECTION_SITES.map(s => `<option>${s}</option>`).join('');
+  if (dose) {
+    const [date, time] = dose.takenAt.split(' ');
+    doseDate.value = date;
+    doseTime.value = time.slice(0, 5);
+    doseMed.value = dose.medicationId;
+    doseDosage.value = dose.dosage || '';
+    doseSite.value = dose.injectionSite || '';
+    doseNotes.value = dose.notes || '';
+  } else {
+    doseDate.value = todayISO();
+    doseTime.value = nowTimeHHMM();
+    // Default to whatever was taken most recently, if it's still active.
+    const recent = doses.find(d => choices.some(m => m.id === d.medicationId));
+    doseMed.value = recent ? recent.medicationId : (choices[0] ? choices[0].id : '');
+    doseNotes.value = '';
+    fillDosageDefault();
+  }
+  updateSiteField();
+  doseModal.classList.add('open');
+}
+
+// Dosage: what was taken last time for this medication, else its usual dosage.
+function fillDosageDefault() {
+  const med = meds.find(m => m.id === Number(doseMed.value));
+  const last = med ? lastDoseOf(med.id, editingDose && editingDose.id) : null;
+  doseDosage.value = (last && last.dosage) || (med && med.defaultDosage) || '';
+}
+
+// Injection site only for injections, with the last site used to help rotate.
+function updateSiteField() {
+  const med = meds.find(m => m.id === Number(doseMed.value));
+  const isInjection = !!(med && med.isInjection);
+  doseSiteField.style.display = isInjection ? '' : 'none';
+  if (!isInjection) return;
+  const lastWithSite = doses.find(d => d.medicationId === med.id && d.injectionSite && (!editingDose || d.id !== editingDose.id));
+  doseSiteHint.textContent = lastWithSite
+    ? `Last site: ${lastWithSite.injectionSite} (${fmtTakenAt(lastWithSite.takenAt)})` : '';
+}
+
+doseMed.addEventListener('change', () => { fillDosageDefault(); updateSiteField(); });
+document.getElementById('doseCancelBtn').addEventListener('click', () => doseModal.classList.remove('open'));
+
+document.getElementById('doseSaveBtn').addEventListener('click', async (ev) => {
+  if (!doseMed.value) { doseMsg.innerHTML = '<div class="error-msg">Pick a medication.</div>'; return; }
+  if (!doseDate.value || !doseTime.value) { doseMsg.innerHTML = '<div class="error-msg">Enter the date and time.</div>'; return; }
+  ev.target.disabled = true;
+  try {
+    setMedData(await fetchJSON('saveDose', {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({
+        id: editingDose ? editingDose.id : 0,
+        medicationId: Number(doseMed.value),
+        takenAt: `${doseDate.value} ${doseTime.value}`,
+        dosage: doseDosage.value.trim(),
+        injectionSite: doseSite.value,
+        notes: doseNotes.value.trim(),
+      })
+    }));
+    doseModal.classList.remove('open');
+    renderMeds();
+  } catch (err) {
+    doseMsg.innerHTML = `<div class="error-msg">Couldn't save: ${escapeHtml(err.message)}</div>`;
+  } finally {
+    ev.target.disabled = false;
+  }
+});
+
+document.getElementById('doseDeleteBtn').addEventListener('click', async () => {
+  if (!editingDose || !confirm(`Delete this ${editingDose.medication} dose from ${fmtTakenAt(editingDose.takenAt)}?`)) return;
+  try {
+    setMedData(await fetchJSON('deleteDose', {
+      method: 'POST', headers: authHeaders(), body: JSON.stringify({ id: editingDose.id })
+    }));
+    doseModal.classList.remove('open');
+    renderMeds();
+  } catch (err) {
+    doseMsg.innerHTML = `<div class="error-msg">Couldn't delete: ${escapeHtml(err.message)}</div>`;
+  }
+});
+
+function openMedModal() {
+  startMedEdit(null);
+  renderMedList();
+  medModal.classList.add('open');
+}
+
+function startMedEdit(med) {
+  editingMed = med;
+  medName.value = med ? med.name : '';
+  medDosage.value = med ? (med.defaultDosage || '') : '';
+  medInjection.checked = med ? med.isInjection : false;
+  medActive.checked = med ? med.active : true;
+  medActiveField.style.display = med ? '' : 'none';
+  medSaveBtn.textContent = med ? 'Save changes' : 'Add medication';
+  medMsg.innerHTML = '';
+}
+
+function renderMedList() {
+  document.getElementById('medList').innerHTML = meds.map(m => `
+    <li>
+      <span class="${m.active ? '' : 'inactive'}">${escapeHtml(m.name)}${m.defaultDosage ? ` · ${escapeHtml(m.defaultDosage)}` : ''}${m.isInjection ? ' · 💉' : ''}${m.active ? '' : ' (inactive)'}</span>
+      <button type="button" class="link-btn" data-edit-med="${m.id}">Edit</button>
+    </li>`).join('');
+}
+
+document.getElementById('medList').addEventListener('click', (ev) => {
+  const btn = ev.target.closest('[data-edit-med]');
+  if (btn) startMedEdit(meds.find(m => m.id === Number(btn.dataset.editMed)));
+});
+document.getElementById('medNewBtn').addEventListener('click', () => startMedEdit(null));
+document.getElementById('medCloseBtn').addEventListener('click', () => { medModal.classList.remove('open'); renderMeds(); });
+
+medSaveBtn.addEventListener('click', async () => {
+  const name = medName.value.trim();
+  if (!name) { medMsg.innerHTML = '<div class="error-msg">Enter the medication name.</div>'; return; }
+  medSaveBtn.disabled = true;
+  try {
+    setMedData(await fetchJSON('saveMedication', {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({
+        id: editingMed ? editingMed.id : 0,
+        name, defaultDosage: medDosage.value.trim(),
+        isInjection: medInjection.checked,
+        active: editingMed ? medActive.checked : true,
+      })
+    }));
+    renderMedList();
+    startMedEdit(null);
+    medMsg.innerHTML = '<div class="saved-msg">Saved.</div>';
+  } catch (err) {
+    medMsg.innerHTML = `<div class="error-msg">${escapeHtml(err.message)}</div>`;
+  } finally {
+    medSaveBtn.disabled = false;
+  }
 });
 
 // ── login flow ──────────────────────────────────────────────────────────────

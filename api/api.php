@@ -107,6 +107,60 @@ function nullableInt($value) {
   return ($value === null || $value === '') ? null : (int)$value;
 }
 
+// ---- Medications ----
+// Each person keeps their own list (pwi_medications) and dose log
+// (pwi_med_doses). Medications are deactivated, never deleted, so old doses
+// keep their name.
+
+function shapeMedication(array $row): array {
+  return [
+    'id'            => (int)$row['id'],
+    'name'          => $row['name'],
+    'defaultDosage' => $row['default_dosage'],
+    'isInjection'   => (bool)$row['is_injection'],
+    'active'        => (bool)$row['active'],
+  ];
+}
+
+function shapeDose(array $row): array {
+  return [
+    'id'            => (int)$row['id'],
+    'medicationId'  => (int)$row['medication_id'],
+    'medication'    => $row['medication_name'],
+    'takenAt'       => $row['taken_at'],
+    'dosage'        => $row['dosage'],
+    'injectionSite' => $row['injection_site'],
+    'notes'         => $row['notes'],
+  ];
+}
+
+function listMedications(int $userId): array {
+  $stmt = db()->prepare('SELECT * FROM pwi_medications WHERE user_id = ? ORDER BY active DESC, name');
+  $stmt->bind_param('i', $userId);
+  $stmt->execute();
+  $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+  $stmt->close();
+  return array_map('shapeMedication', $rows);
+}
+
+function listDoses(int $userId): array {
+  $stmt = db()->prepare(
+    'SELECT d.*, m.name AS medication_name FROM pwi_med_doses d
+     JOIN pwi_medications m ON m.id = d.medication_id
+     WHERE d.user_id = ? ORDER BY d.taken_at DESC, d.id DESC'
+  );
+  $stmt->bind_param('i', $userId);
+  $stmt->execute();
+  $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+  $stmt->close();
+  return array_map('shapeDose', $rows);
+}
+
+function nullableText($value, int $max): ?string {
+  $text = trim((string)($value ?? ''));
+  return $text === '' ? null : mb_substr($text, 0, $max);
+}
+
 // ---- Router ----
 
 $action = $_GET['action'] ?? '';
@@ -207,6 +261,103 @@ switch ($action) {
     $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
     respond(['success' => true, 'entries' => array_map('shapeEntry', $rows)]);
+  }
+
+  case 'listMedications': {
+    $user = requireUser();
+    respond(['medications' => listMedications((int)$user['id']), 'doses' => listDoses((int)$user['id'])]);
+  }
+
+  // Adds a medication (no id) or updates one of the caller's own.
+  case 'saveMedication': {
+    $user = requireUser();
+    $userId = (int)$user['id'];
+    $body = jsonBody();
+    $id = (int)($body['id'] ?? 0);
+    $name = nullableText($body['name'] ?? '', 100);
+    if ($name === null) {
+      fail('Medication name is required');
+    }
+    $defaultDosage = nullableText($body['defaultDosage'] ?? '', 50);
+    $isInjection = !empty($body['isInjection']) ? 1 : 0;
+    $active = array_key_exists('active', $body) ? (!empty($body['active']) ? 1 : 0) : 1;
+    try {
+      if ($id > 0) {
+        $stmt = db()->prepare(
+          'UPDATE pwi_medications SET name = ?, default_dosage = ?, is_injection = ?, active = ?
+           WHERE id = ? AND user_id = ?'
+        );
+        $stmt->bind_param('ssiiii', $name, $defaultDosage, $isInjection, $active, $id, $userId);
+      } else {
+        $stmt = db()->prepare(
+          'INSERT INTO pwi_medications (user_id, name, default_dosage, is_injection, active) VALUES (?, ?, ?, ?, ?)'
+        );
+        $stmt->bind_param('issii', $userId, $name, $defaultDosage, $isInjection, $active);
+      }
+      $stmt->execute();
+      $stmt->close();
+    } catch (mysqli_sql_exception $e) {
+      if ($e->getCode() === 1062) {
+        fail('You already have a medication with that name');
+      }
+      throw $e;
+    }
+    respond(['success' => true, 'medications' => listMedications($userId), 'doses' => listDoses($userId)]);
+  }
+
+  // Records a dose (no id) or updates one of the caller's own. takenAt is
+  // local "YYYY-MM-DD HH:MM". The injection site is kept only for a
+  // medication marked as an injection.
+  case 'saveDose': {
+    $user = requireUser();
+    $userId = (int)$user['id'];
+    $body = jsonBody();
+    $id = (int)($body['id'] ?? 0);
+    $medicationId = (int)($body['medicationId'] ?? 0);
+    $stmt = db()->prepare('SELECT is_injection FROM pwi_medications WHERE id = ? AND user_id = ?');
+    $stmt->bind_param('ii', $medicationId, $userId);
+    $stmt->execute();
+    $med = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    if (!$med) {
+      fail('Pick a medication');
+    }
+    $takenAt = trim((string)($body['takenAt'] ?? ''));
+    if (!preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/', $takenAt) || !strtotime($takenAt)) {
+      fail('A valid date and time are required');
+    }
+    $takenAt .= ':00';
+    $dosage = nullableText($body['dosage'] ?? '', 50);
+    $site = $med['is_injection'] ? nullableText($body['injectionSite'] ?? '', 50) : null;
+    $notes = nullableText($body['notes'] ?? '', 500);
+    if ($id > 0) {
+      $stmt = db()->prepare(
+        'UPDATE pwi_med_doses SET medication_id = ?, taken_at = ?, dosage = ?, injection_site = ?, notes = ?
+         WHERE id = ? AND user_id = ?'
+      );
+      $stmt->bind_param('issssii', $medicationId, $takenAt, $dosage, $site, $notes, $id, $userId);
+    } else {
+      $stmt = db()->prepare(
+        'INSERT INTO pwi_med_doses (user_id, medication_id, taken_at, dosage, injection_site, notes)
+         VALUES (?, ?, ?, ?, ?, ?)'
+      );
+      $stmt->bind_param('iissss', $userId, $medicationId, $takenAt, $dosage, $site, $notes);
+    }
+    $stmt->execute();
+    $stmt->close();
+    respond(['success' => true, 'medications' => listMedications($userId), 'doses' => listDoses($userId)]);
+  }
+
+  case 'deleteDose': {
+    $user = requireUser();
+    $userId = (int)$user['id'];
+    $body = jsonBody();
+    $id = (int)($body['id'] ?? 0);
+    $stmt = db()->prepare('DELETE FROM pwi_med_doses WHERE id = ? AND user_id = ?');
+    $stmt->bind_param('ii', $id, $userId);
+    $stmt->execute();
+    $stmt->close();
+    respond(['success' => true, 'medications' => listMedications($userId), 'doses' => listDoses($userId)]);
   }
 
   default:

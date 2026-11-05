@@ -58,6 +58,14 @@ All charts share a **30-day / 90-day / 1-year** range toggle:
 
 ## Recent history (most recent first)
 
+1. Medications (2026-11-05): each person manages their own medication list
+   (`pwi_medications`: name, usual dosage, injection yes/no, active) and
+   records doses (`pwi_med_doses`: date/time defaulting to now, medication,
+   dosage, injection site for injections only, notes). A Medications card
+   under the banner has Record dose, recent doses (tap to edit/delete), and
+   Manage. Dosage defaults to the last one taken for that medication, and
+   the last injection site is shown to help rotate sites. Medications are
+   deactivated, never deleted, so old doses keep their name.
 1. Migrate off Google Sheets/Apps Script entirely: new `api/api.php` + MySQL
    schema (`pwi_entries`) on MyDataWorld, SSO login shared with My Apps Hub/
    T-Minus/Shed Inventory, entries re-keyed from free-text Name to

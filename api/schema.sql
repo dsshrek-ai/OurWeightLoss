@@ -43,3 +43,33 @@ CREATE TABLE IF NOT EXISTS pwi_entries (
   UNIQUE KEY uniq_user_date (user_id, entry_date),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------- SCHEMA CHANGE: medications (2026-11-05) ----------
+-- Run once. Each person manages their own medication list and dose log.
+-- A medication is deactivated, never deleted, so its past doses keep their
+-- name (hence ON DELETE RESTRICT from the dose side).
+CREATE TABLE IF NOT EXISTS pwi_medications (
+  id              INT AUTO_INCREMENT PRIMARY KEY,
+  user_id         INT NOT NULL,
+  name            VARCHAR(100) NOT NULL,
+  default_dosage  VARCHAR(50) NULL,           -- free text, e.g. "2.5 mg"
+  is_injection    TINYINT(1) NOT NULL DEFAULT 0,
+  active          TINYINT(1) NOT NULL DEFAULT 1,
+  created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_user_med (user_id, name),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS pwi_med_doses (
+  id              INT AUTO_INCREMENT PRIMARY KEY,
+  user_id         INT NOT NULL,
+  medication_id   INT NOT NULL,
+  taken_at        DATETIME NOT NULL,          -- local date/time the dose was taken
+  dosage          VARCHAR(50) NULL,
+  injection_site  VARCHAR(50) NULL,           -- only for injections
+  notes           VARCHAR(500) NULL,
+  created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY ix_pwi_med_doses_user (user_id, taken_at),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (medication_id) REFERENCES pwi_medications(id) ON DELETE RESTRICT
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
